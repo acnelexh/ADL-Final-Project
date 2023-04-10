@@ -12,7 +12,7 @@ def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
     return torch.optim.lr_scheduler.LambdaLR(optimizer, f)
 
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, writer = None):
+def train_one_epoch(model, optimizer, data_loader, device, epoch, writer = None):
     # train the model for one epoch
     model.train()
 
@@ -25,11 +25,12 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, wr
         lr_scheduler = warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor)
         
     for input_nodes, output_nodes, blocks in data_loader:
-        input_nodes = input_nodes.to(device)
-        output_nodes = output_nodes.to(device)
-        
+        blocks = [b.to(device) for b in blocks]
+        input_features = blocks[0].srcdata['features']
+        output_labels = blocks[-1].dstdata['label']
+
         # compute loss
-        loss = model(x, target)
+        loss = model(blocks, input_features, output_labels)
         losses.append(loss.item())
         
         # compute gradient and do optimizer step
@@ -43,14 +44,18 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, wr
             
     return torch.mean(torch.tensor(losses))
     
-def evaluate(model, data_loader, device):
+def evaluate(model, dataloader, device, num_classes):
     # evaluate the model (acc for now)
-    acc = torchmetrics.Accuracy()
+    acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
     model.eval()
     
-    for x, target in data_loader:
-        pred = model(x.to(device))
-        acc.update(pred, target.to(device))
+    for input_nodes, output_nodes, blocks in dataloader:
+        blocks = [b.to(device) for b in blocks]
+        input_features = blocks[0].srcdata['features']
+        output_labels = blocks[-1].dstdata['label']
+        
+        pred = model(blocks, input_features)
+        acc.update(pred, output_labels.to(device))
     
     return acc.compute()
     

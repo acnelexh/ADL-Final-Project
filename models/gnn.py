@@ -13,13 +13,14 @@ import dgl
 import dgl.data
 from dgl.utils import expand_as_pair
 import dgl.function as fn
+from dgl.nn.pytorch.conv import GraphConv
 
 import timeit
 
-__all__ = ['GraphConv', 'SimpleGNN']
+__all__ = ['GraphConvPlus', 'SimpleGNN']
 
 # pylint: disable=W0235
-class GraphConv(nn.Module):
+class GraphConvPlus(nn.Module):
     r"""
     Description
     -----------
@@ -300,26 +301,23 @@ class GraphConv(nn.Module):
 
             return rst
 
+
 class SimpleGNN(nn.Module):
-    def __init__(self, in_feats, h_feats, num_classes):
-        super(SimpleGNN, self).__init__()
-        self.conv1 = GraphConv(in_feats, h_feats)
-        self.conv2 = GraphConv(h_feats, num_classes)
+    def __init__(self, in_features, hidden_features, out_features):
+        super().__init__()
+        self.conv1 = dgl.nn.GraphConv(in_features, hidden_features, allow_zero_in_degree=True)
+        self.conv2 = dgl.nn.GraphConv(hidden_features, out_features, allow_zero_in_degree=True)
         self.criterion = nn.CrossEntropyLoss()
-        
-    def forward(self, g, in_feat, target = None):
-        # training mode, compute loss
+
+    def forward(self, blocks, x, output_labels = None):
         if self.training == True:
-            assert(target is not None)
-            h = self.conv1(g, in_feat)
-            h = F.relu(h)
-            h = self.conv2(g, h)
-            loss = self.criterion(h, target)
+            x = F.relu(self.conv1(blocks[0], x))
+            x = self.conv2(blocks[1], x)
+            x = F.softmax(x, dim=1)
+            loss = self.criterion(x, output_labels)
             return loss
-        # eval mode, compute prediction
         else:
-            h = self.conv1(g, in_feat)
-            h = F.relu(h)
-            h = self.conv2(g, h)
-            return h
+            x = F.relu(self.conv1(blocks[0], x))
+            x = F.relu(self.conv2(blocks[1], x))
+            return x
         

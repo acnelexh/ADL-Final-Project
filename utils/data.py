@@ -35,13 +35,17 @@ def read_hemibrain_graph(args):
     
     graph = dgl.graph((pre_indexes, post_indexes), num_nodes=num_nodes)
 
+    graph.ndata['features'] = torch.stack([graph.in_degrees(), graph.out_degrees()]).T.type(torch.float32)
+    graph.ndata['label'] = torch.tensor(labels).type(torch.int64)
+    e_weights = torch.tensor(traced_total_connections['weight'].values)
+    
     return graph, num_nodes
 
 def get_dataloader(args):
     graph, num_nodes = read_hemibrain_graph(args)
-    sampler = dgl.dataloading.MultiLayerNeighborSampler([15, 10, 5])
+    sampler = dgl.dataloading.MultiLayerFullNeighborSampler(2)
     dataloader = dgl.dataloading.DataLoader(
         graph, torch.arange(num_nodes), sampler,
-        batch_size=1024, shuffle=True, drop_last=False, num_workers=4)
+        batch_size=1024, shuffle=True, drop_last=False, num_workers=1)
 
     return dataloader
