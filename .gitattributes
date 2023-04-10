@@ -1,6 +1,5 @@
-exported-traced-adjacencies/PaxHeader filter=lfs diff=lfs merge=lfs -text
-exported-traced-adjacencies/README filter=lfs diff=lfs merge=lfs -text
-exported-traced-adjacencies/traced-neurons.csv filter=lfs diff=lfs merge=lfs -text
-exported-traced-adjacencies/traced-roi-connections.csv filter=lfs diff=lfs merge=lfs -text
-exported-traced-adjacencies/traced-total-connections.csv filter=lfs diff=lfs merge=lfs -text
-data/exported-traced-adjacencies filter=lfs diff=lfs merge=lfs -text
+data/exported-traced-adjacencies/PaxHeader filter=lfs diff=lfs merge=lfs -text
+data/exported-traced-adjacencies/README filter=lfs diff=lfs merge=lfs -text
+data/exported-traced-adjacencies/traced-neurons.csv filter=lfs diff=lfs merge=lfs -text
+data/exported-traced-adjacencies/traced-roi-connections.csv filter=lfs diff=lfs merge=lfs -text
+data/exported-traced-adjacencies/traced-total-connections.csv filter=lfs diff=lfs merge=lfs -text
