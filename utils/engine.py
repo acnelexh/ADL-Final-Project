@@ -28,7 +28,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, writer = None)
         blocks = [b.to(device) for b in blocks]
         input_features = blocks[0].srcdata['features']
         output_labels = blocks[-1].dstdata['label']
-
+        
         # compute loss
         loss = model(blocks, input_features, output_labels)
         losses.append(loss.item())
@@ -46,7 +46,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, writer = None)
     
 def evaluate(model, dataloader, device, num_classes):
     # evaluate the model (acc for now)
-    acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+    acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes).to(device)
     model.eval()
     
     for input_nodes, output_nodes, blocks in dataloader:

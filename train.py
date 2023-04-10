@@ -63,6 +63,8 @@ def train(model,
     eval_acc = dict()
     num_classes = args.num_classes
     
+    model.to(device)
+    
     for epoch in range(args.epochs):
         # train the model
         time = datetime.datetime.now()
@@ -87,7 +89,7 @@ def train(model,
         if (epoch + 1) % args.log_epochs == 0 or (epoch + 1) == args.epochs:
             # evaluate the model
             time = datetime.datetime.now()
-            acc = evaluate(model, dataloader, device, num_classes)
+            acc = evaluate(model, dataloader, device, num_classes).item()
             eval_time = datetime.datetime.now() - time
             with open(os.path.join(args.log_dir, 'log.txt'), 'a') as f:
                 f.write(f'Epoch: {epoch}, validation accuracy: {acc}, eval time: {eval_time}\n')

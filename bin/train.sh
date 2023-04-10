@@ -4,5 +4,5 @@
 
 python train.py\
     --dataset ./data/exported-traced-adjacencies/\
-    --device cpu\
+    --device cuda\
     --num_classes 6224
