@@ -16,6 +16,8 @@ import dgl.function as fn
 
 import timeit
 
+__all__ = ['GraphConv']
+
 # pylint: disable=W0235
 class GraphConv(nn.Module):
     r"""
