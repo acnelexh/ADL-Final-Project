@@ -16,8 +16,6 @@ def get_args():
     # training options
     parser.add_argument('--output_dir', default='./runs',
                         help='Directory to save the model')
-    parser.add_argument('--log_dir', default='./logs',
-                        help='Directory to save the log')
     
     # training parameters
     parser.add_argument('--lr', type=float, default=5e-4)
@@ -51,6 +49,7 @@ def train(model,
           dataloader,
           optimizer,
           lr_scheduler,
+          write_dirs,
           args):
     """
     Train the model
@@ -72,18 +71,17 @@ def train(model,
         epoch_time = datetime.datetime.now() - time
         lr_scheduler.step()
         # save the model
-        if args.output_dir:
-            checkpoint = {
-                'model': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'lr_scheduler': lr_scheduler.state_dict(),
-                'args': args,
-                'epoch': epoch
-            }
-            torch.save(checkpoint, os.path.join(args.output_dir, 'model_{}.pth'.format(epoch)))
-            torch.save(checkpoint, os.path.join(args.output_dir, 'model_last.pth'))
+        checkpoint = {
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'lr_scheduler': lr_scheduler.state_dict(),
+            'args': args,
+            'epoch': epoch
+        }
+        torch.save(checkpoint, os.path.join(write_dirs, 'model_{}.pth'.format(epoch)))
+        torch.save(checkpoint, os.path.join(write_dirs, 'model_last.pth'))
         # save the log
-        with open(os.path.join(args.log_dir, 'log.txt'), 'a') as f:
+        with open(os.path.join(write_dirs, 'log.txt'), 'a') as f:
             f.write(f'Epoch: {epoch}, train loss: {loss}, train time: {epoch_time}\n')
         
         if (epoch + 1) % args.log_epochs == 0 or (epoch + 1) == args.epochs:
@@ -91,21 +89,23 @@ def train(model,
             time = datetime.datetime.now()
             acc = evaluate(model, dataloader, device, num_classes).item()
             eval_time = datetime.datetime.now() - time
-            with open(os.path.join(args.log_dir, 'log.txt'), 'a') as f:
+            with open(os.path.join(write_dirs, 'log.txt'), 'a') as f:
                 f.write(f'Epoch: {epoch}, validation accuracy: {acc}, eval time: {eval_time}\n')
             eval_acc[epoch] = acc
             # save the best model
-            if args.output_dir:
-                if acc == max(eval_acc.values()):
-                    torch.save(checkpoint, os.path.join(args.output_dir, 'model_best.pth'))
+            if acc == max(eval_acc.values()):
+                torch.save(checkpoint, os.path.join(write_dirs, 'model_best.pth'))
             
 
 def main(args):
     # create the experiment directory
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-    if not os.path.exists(args.log_dir):
-        os.makedirs(args.log_dir)
+    write_dir = args.output_dir + '/' + datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    os.makedirs(os.path.join(write_dir))
+    # TODO 
+    # add tensorboard support with writers
+    
     
     # create model and optimizer
     # hardcode for now
@@ -121,7 +121,7 @@ def main(args):
     
     dataloader = get_dataloader(args)
     
-    train(model, dataloader, optimizer, lr_scheduler, args)
+    train(model, dataloader, optimizer, lr_scheduler, write_dir, args)
     
 
 if __name__ == "__main__":
