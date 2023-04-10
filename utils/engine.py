@@ -1,16 +1,8 @@
-import math
-import sys
-import time
+# Training and evaluation functions
 import torch
-import pickle
 import torchmetrics
 
-import torchvision.models.detection.mask_rcnn
-
-from pathlib import Path
-
 def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
-
     def f(x):
         if x >= warmup_iters:
             return 1
@@ -32,9 +24,9 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, wr
         warmup_iters = min(1000, len(data_loader) - 1)
         lr_scheduler = warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor)
         
-    for x, target in data_loader:
-        x = x.to(device)
-        target = target.to(device)
+    for input_nodes, output_nodes, blocks in data_loader:
+        input_nodes = input_nodes.to(device)
+        output_nodes = output_nodes.to(device)
         
         # compute loss
         loss = model(x, target)

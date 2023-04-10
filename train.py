@@ -1,19 +1,23 @@
+# main function for training
 import argparse
 import torch
-import models
 import torch.nn as nn
 import datetime
 import os
-from utils.engine import train_one_epoch, evaluate
-from utils.data import get_dataloader
+from utils import train_one_epoch, evaluate, get_dataloader, fetch_model_fn
 
 def get_args():
     parser = argparse.ArgumentParser()
+    # required arguments
+    parser.add_argument('--dataset', default='./data/exported-traced-adjacencies', help='dataset path')
+    parser.add_argument('--model', default='SimpleGNN', help='model name')
+    
     # training options
     parser.add_argument('--save_dir', default='./runs',
                         help='Directory to save the model')
     parser.add_argument('--log_dir', default='./logs',
                         help='Directory to save the log')
+    
     # training parameters
     parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--lr-scheduler', default="multisteplr", help='the lr scheduler (default: multisteplr)')
@@ -26,11 +30,16 @@ def get_args():
     parser.add_argument('--lr_decay', type=float, default=1e-5)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=32)
-    #
-    parser.add_argument('--print-freq', default=20, type=int, help='print frequency')
+    parser.add_argument('--weight_decay', type=float, default=1e-4)
+    
+    # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--device', default='cuda', help='device to use for training / testing')
+    
+    # logging and saving
+    parser.add_argument('--print-freq', default=20, type=int, help='print frequency')
     parser.add_argument('--save_model_interval', type=int, default=1)
-
+    
     args = parser.parse_args()
     
     return args
@@ -86,8 +95,6 @@ def train(model,
                 if acc == max(eval_acc.values()):
                     torch.save(checkpoint, os.path.join(args.output_dir, 'model_best.pth'))
             
-            
-            
 
 def main(args):
     # create the experiment directory
@@ -97,7 +104,8 @@ def main(args):
         os.makedirs(args.log_dir)
     
     # create model and optimizer
-    model = models.GraphConv()
+    # hardcode for now
+    model = fetch_model_fn(args)(2, 1024, 6223)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
     if args.lr_scheduler == 'multisteplr':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
@@ -114,5 +122,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = get_args()
-    train(args)
+    main(args)
     

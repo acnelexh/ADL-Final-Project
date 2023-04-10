@@ -1,1 +1,1 @@
-from gnn import *
+from .gnn import *
