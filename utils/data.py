@@ -1,11 +1,14 @@
 # Data loading and preprocessing
 from dgl.dataloading import DataLoader
+import dgl.function as fn
 import dgl
 import torch
 import numpy as np
 import pandas as pd
+from dgl.nn import EdgeWeightNorm
 
 def read_hemibrain_graph(args):
+    # from the notebook
     def bodyId_to_idx(bodyId):
         return bodyIds.index(bodyId)
     
@@ -39,11 +42,20 @@ def read_hemibrain_graph(args):
     graph.ndata['label'] = torch.tensor(labels).type(torch.int64)
     e_weights = torch.tensor(traced_total_connections['weight'].values)
     
+    edge_weight = e_weights.type(torch.float32)
+    #graph.update_all(fn.u_mul_e('features', 'w', 'm'), fn.sum('m', 'features'))
+    
+    norm = EdgeWeightNorm(norm='both')
+    norm_edge_weight = norm(graph, edge_weight)
+    
+    graph.edata['w'] = norm_edge_weight
+    
     return graph, num_nodes
 
-def get_dataloader(args):
+def get_dataloader(args, hidden=[512, 1024, 512]):
+    sample_length = len(hidden) + 1
     graph, num_nodes = read_hemibrain_graph(args)
-    sampler = dgl.dataloading.MultiLayerFullNeighborSampler(2)
+    sampler = dgl.dataloading.MultiLayerFullNeighborSampler(sample_length)
     dataloader = dgl.dataloading.DataLoader(
         graph, torch.arange(num_nodes), sampler,
         batch_size=1024, shuffle=True, drop_last=False, num_workers=1)
