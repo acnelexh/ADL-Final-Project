@@ -23,7 +23,7 @@ def get_args():
     # training parameters
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--lr_scheduler', default="multisteplr", help='the lr scheduler (default: multisteplr)')
-    parser.add_argument('--lr_step_size', default=8, type=int,
+    parser.add_argument('--lr_step_size', default=-1, type=int,
                         help='decrease lr every step-size epochs (multisteplr scheduler only)')
     parser.add_argument('--lr_steps', default=[16, 22], nargs='+', type=int,
                         help='decrease lr every step-size epochs (multisteplr scheduler only)')
@@ -137,6 +137,8 @@ def main(args):
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
     elif args.lr_scheduler == 'cosineannealinglr':
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    elif args.lr_scheduler == 'step_lr':
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step_size, gamma=args.lr_gamma)
     else:
         raise RuntimeError("Invalid lr scheduler '{}'. Only MultiStepLR and CosineAnnealingLR "
                             "are supported.".format(args.lr_scheduler))

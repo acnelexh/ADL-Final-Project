@@ -48,7 +48,8 @@ class SimpleGNN(nn.Module):
         x = self.softmax(x)
         if self.training == True:
             assert (output_labels is not None)
-            x = self.criterion(x, output_labels)
+            train_mask = graph.ndata["train_mask"]
+            x = self.criterion(x[train_mask], output_labels[train_mask])
         return x
 
 class SAGEGNN(nn.Module):
@@ -87,6 +88,6 @@ class SAGEGNN(nn.Module):
         x = self.softmax(x)
         if self.training == True:
             assert (output_labels is not None)
-            train_mask = graph["train_mask"]
+            train_mask = graph.ndata["train_mask"]
             x = self.criterion(x[train_mask], output_labels[train_mask])
         return x
