@@ -6,7 +6,7 @@ import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
-from utils import train_one_epoch, evaluate, get_dataloader, fetch_model_fn
+from utils import train_one_epoch, evaluate, fetch_model_fn, get_hemibrain_split
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -18,29 +18,31 @@ def get_args():
     # training options
     parser.add_argument('--output_dir', default='./runs',
                         help='Directory to save the model')
+    parser.add_argument('--tensorboard_log_dir', default='./tensorboard_log', help='tensorboard log directory')
     
     # training parameters
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--lr-scheduler', default="multisteplr", help='the lr scheduler (default: multisteplr)')
-    parser.add_argument('--lr-step-size', default=8, type=int,
+    parser.add_argument('--lr_scheduler', default="multisteplr", help='the lr scheduler (default: multisteplr)')
+    parser.add_argument('--lr_step_size', default=8, type=int,
                         help='decrease lr every step-size epochs (multisteplr scheduler only)')
-    parser.add_argument('--lr-steps', default=[16, 22], nargs='+', type=int,
+    parser.add_argument('--lr_steps', default=[16, 22], nargs='+', type=int,
                         help='decrease lr every step-size epochs (multisteplr scheduler only)')
-    parser.add_argument('--lr-gamma', default=0.1, type=float,
+    parser.add_argument('--lr_gamma', default=0.1, type=float,
                         help='decrease lr by a factor of lr-gamma (multisteplr scheduler only)')
     parser.add_argument('--lr_decay', type=float, default=1e-5)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--warm_up', help='warmup the learning rate')
-    parser.add_argument('--tensorboard_log_dir', default='./tensorboard_log', help='tensorboard log directory')
+    parser.add_argument('--hidden_dim', nargs='+', type=int, default=64, help='hidden dimension')
+    
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
     
     # logging and saving
-    parser.add_argument('--print-freq', default=20, type=int, help='print frequency')
+    parser.add_argument('--print_freq', default=20, type=int, help='print frequency')
     parser.add_argument('--save_model_interval', type=int, default=10)
     parser.add_argument('--log_epochs', type=int, default=1)
     
@@ -50,7 +52,7 @@ def get_args():
     
 
 def train(model,
-          dataloader,
+          data_split,
           optimizer,
           lr_scheduler,
           write_dirs,
@@ -69,11 +71,10 @@ def train(model,
     num_classes = args.num_classes
     
     model.to(device)
-    
     for epoch in tqdm(range(args.epochs)):
         # train the model
         time = datetime.datetime.now()
-        loss = train_one_epoch(model, optimizer, dataloader, device, epoch, warm_up)
+        loss = train_one_epoch(model, optimizer, data_split, device, epoch, warm_up)
         epoch_time = datetime.datetime.now() - time
         lr_scheduler.step()
         # save the model
@@ -93,7 +94,7 @@ def train(model,
         if (epoch + 1) % args.log_epochs == 0 or (epoch + 1) == args.epochs:
             # evaluate the model
             time = datetime.datetime.now()
-            acc = evaluate(model, dataloader, device, num_classes).item()
+            acc = evaluate(model, data_split, device, num_classes).item()
             eval_time = datetime.datetime.now() - time
             with open(os.path.join(write_dirs, 'log.txt'), 'a') as f:
                 f.write(f'Epoch: {epoch},\t  validation accuracy: {round(acc, 4)},\t eval time: {eval_time}\n')
@@ -130,8 +131,7 @@ def main(args):
     
     # create model and optimizer
     # hardcode for now
-    hidden_dim = [1024]
-    model = fetch_model_fn(args)(2, hidden_dim, args.num_classes)
+    model = fetch_model_fn(args)(2, args.hidden_dim, args.num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
     if args.lr_scheduler == 'multisteplr':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
@@ -141,9 +141,9 @@ def main(args):
         raise RuntimeError("Invalid lr scheduler '{}'. Only MultiStepLR and CosineAnnealingLR "
                             "are supported.".format(args.lr_scheduler))
     
-    dataloader = get_dataloader(args, hidden_dim)
+    data_split = get_hemibrain_split(args)
     
-    train(model, dataloader, optimizer, lr_scheduler, write_dir, args, writer)
+    train(model, data_split, optimizer, lr_scheduler, write_dir, args, writer)
     
 
 if __name__ == "__main__":
