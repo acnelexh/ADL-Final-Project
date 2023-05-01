@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import datetime
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 import os
 from utils import train_one_epoch, evaluate, get_dataloader, fetch_model_fn
 
@@ -31,6 +32,8 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
+    parser.add_argument('--warm_up', help='warmup the learning rate')
+    parser.add_argument('--tensorboard_log_dir', default='./tensorboard_log', help='tensorboard log directory')
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
@@ -51,7 +54,8 @@ def train(model,
           optimizer,
           lr_scheduler,
           write_dirs,
-          args):
+          args,
+          writer):
     """
     Train the model
     input:
@@ -60,6 +64,7 @@ def train(model,
         None
     """
     device = args.device
+    warm_up = args.warm_up
     eval_acc = dict()
     num_classes = args.num_classes
     
@@ -68,7 +73,7 @@ def train(model,
     for epoch in tqdm(range(args.epochs)):
         # train the model
         time = datetime.datetime.now()
-        loss = train_one_epoch(model, optimizer, dataloader, device, epoch)
+        loss = train_one_epoch(model, optimizer, dataloader, device, epoch, warm_up)
         epoch_time = datetime.datetime.now() - time
         lr_scheduler.step()
         # save the model
@@ -96,10 +101,18 @@ def train(model,
             # save the best model
             if acc > max(eval_acc.values()):
                 torch.save(checkpoint, os.path.join(write_dirs, 'model_best.pth'))
+        
+        # tensorboard stuff
+        writer.add_scalar('Loss/train', loss.item(), epoch)
+        writer.add_scalar('Accuracy/val', acc, epoch)
             
             
 
 def main(args):
+    if not os.path.exists(args.tensorboard_log_dir):
+        os.makedirs(args.tensorboard_log_dir)
+    writer = SummaryWriter(log_dir=args.tensorboard_log_dir)
+    
     # create the experiment directory
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
@@ -111,11 +124,9 @@ def main(args):
         f.write('#!/bin/bash\n\n')
         f.write('python train.py \\\n')
         for key, value in vars(args).items():
+            if type(value) == list:
+                value = ' '.join([str(v) for v in value])
             f.write("   --{} {} \\\n".format(key, value))
-        
-    # TODO 
-    # add tensorboard support with writers
-    
     
     # create model and optimizer
     # hardcode for now
@@ -132,7 +143,7 @@ def main(args):
     
     dataloader = get_dataloader(args, hidden_dim)
     
-    train(model, dataloader, optimizer, lr_scheduler, write_dir, args, warmup=True)
+    train(model, dataloader, optimizer, lr_scheduler, write_dir, args, writer)
     
 
 if __name__ == "__main__":

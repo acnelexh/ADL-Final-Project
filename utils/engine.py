@@ -11,14 +11,14 @@ def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, f)
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, warmup=False, writer = None):
+def train_one_epoch(model, optimizer, data_loader, device, epoch, warm_up, writer = None):
     # train the model for one epoch
     model.train()
 
     losses = []
 
     lr_scheduler = None
-    if (warmup == True) and (epoch == 0):
+    if (warm_up == True) and (epoch == 0):
         warmup_factor = 1. / 1000
         warmup_iters = min(1000, len(data_loader) - 1)
         lr_scheduler = warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor)
