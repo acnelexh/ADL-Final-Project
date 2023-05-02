@@ -10,6 +10,7 @@ from dgl.data import DGLBuiltinDataset
 
 class HemiBrainGraphDataset(DGLBuiltinDataset):
     def __init__(self, args):
+        self.type = type
         # read in data
         traced_neurons = pd.read_csv(args.dataset + '/traced-neurons.csv')
         traced_total_connections = pd.read_csv(args.dataset + '/traced-total-connections.csv')
@@ -45,7 +46,7 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         '''
         # get edge weight
         e_weights = torch.tensor(traced_total_connections['weight'].values)
-        edge_weight = e_weights.type(torch.float32)
+        edge_weight = e_weights.type(torch.float32) #3413160
         
         # normalize edge weight
         norm = EdgeWeightNorm(norm='both')
@@ -68,7 +69,7 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         train_mask[0:15000] = True
         val_mask[15000:16000] = True
         test_mask[16000:] = True
-        
+            
         graph.ndata['train_mask'] = train_mask
         graph.ndata['val_mask'] = val_mask
         graph.ndata['test_mask'] = test_mask
@@ -90,7 +91,7 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         pre_indexes = np.vectorize(bodyId_idx_dict.get)(traced_total_connections['bodyId_pre'].values)
         post_indexes = np.vectorize(bodyId_idx_dict.get)(traced_total_connections['bodyId_post'].values)
         graph = dgl.graph((pre_indexes, post_indexes), num_nodes=num_nodes)
-
+        
         return graph
     
     def get_num_classes(self):
@@ -116,7 +117,8 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
     
     def __len__(self):
         return 1
-    
+        
+
 def get_hemibrain_split(args):
     dataset = HemiBrainGraphDataset(args)
     graph = dataset[0]

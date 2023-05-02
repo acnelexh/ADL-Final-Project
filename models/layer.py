@@ -7,7 +7,6 @@ import torch.nn as nn
 
 from dgl.utils import expand_as_pair
 import dgl.function as fn
-from dgl.nn.pytorch.conv import GraphConv
 
 __all__ = ['GraphConvPlus']
 
