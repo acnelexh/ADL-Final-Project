@@ -32,7 +32,9 @@ def train_one_epoch(model, optimizer, data_split, device, epoch, warm_up, writer
     e_weight = graph.edata['w']
     
     # compute loss
+    # TODO make this more generaliziable?
     loss = model(graph, feats, e_weight, labels)
+    #loss = model(graph, feats, labels)
     losses.append(loss.item())
     
     # compute gradient and do optimizer step

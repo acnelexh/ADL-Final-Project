@@ -33,6 +33,7 @@ def get_args():
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--warm_up', help='warmup the learning rate')
     parser.add_argument('--hidden_dim', nargs='+', type=int, default=[64, 128, 512], help='hidden dimension')
+    parser.add_argument('--input_dim', type=int, default=2, help='input dimension')
     
     
     # dataloader parameters
@@ -71,7 +72,7 @@ def main(args):
     
     # create model and optimizer
     # hardcode for now
-    model = fetch_model_fn(args)(2, args.hidden_dim, args.num_classes)
+    model = fetch_model_fn(args)(args.input_dim, args.hidden_dim, args.num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
     if args.lr_scheduler == 'multisteplr':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)

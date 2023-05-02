@@ -19,10 +19,17 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         self.device = args.device
         self._num_classes = traced_neurons['instance'].nunique()
         
+        bodyIds = traced_total_connections['bodyId_post'].unique()
+        bodyIds = sorted(bodyIds)
+        
+        self.bodyId_idx_dict = {}
+        for i, bodyId in enumerate(bodyIds):
+            self.bodyId_idx_dict[bodyId] = i
+            
         # build graph
         graph = self._build_graph(traced_total_connections)
         graph = self._add_edge_weight(graph, traced_total_connections)
-        graph = self._add_node_feats(graph)
+        graph = self._add_node_feats(graph, args)
         graph = self._partition_graph(graph)
         
         # preprocess labels
@@ -33,11 +40,31 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         self._labels = torch.tensor(labels).type(torch.int64).to(self.device)
         self._g = dgl.reorder_graph(graph).to(self.device)
     
-    def _add_node_feats(self, graph):
+    def _add_node_feats(self, graph, args):
         '''
         Add node features to graph
         '''
-        graph.ndata['feat'] = torch.tensor(self._preprocess_features(graph))
+        # node degree
+        degree = torch.tensor(self._preprocess_degree_feats(graph))
+        
+        # XYZ coordinates features
+        synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
+        # iterate through the df and add xyz coordinates to graph
+        num_nodes = 21663
+        XYZ = torch.zeros(num_nodes, 3)
+        exist = 0
+        for index, row in synapses.iterrows():
+            bodyId = row['bodyid']
+            xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
+            # seems like not all the bodyIds are in the graph
+            if bodyId in self.bodyId_idx_dict:
+                exist += 1
+                XYZ[self.bodyId_idx_dict[bodyId], :] = torch.from_numpy(xyz)
+        print('Number of nodes with xyz coordinates: ', exist)
+        print('fraction of nodes with xyz coordinates: ', exist/num_nodes)
+        # concat degree and xyz coordinates
+        
+        graph.ndata['feat'] = torch.cat((degree, XYZ), dim=1)
         return graph
     
     def _add_edge_weight(self, graph, traced_total_connections):
@@ -81,15 +108,9 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         Build graph from traced_total_connections
         '''
         num_nodes = 21663
-        bodyIds = traced_total_connections['bodyId_post'].unique()
-        bodyIds = sorted(bodyIds)
         
-        bodyId_idx_dict = {}
-        for i, bodyId in enumerate(bodyIds):
-            bodyId_idx_dict[bodyId] = i
-        
-        pre_indexes = np.vectorize(bodyId_idx_dict.get)(traced_total_connections['bodyId_pre'].values)
-        post_indexes = np.vectorize(bodyId_idx_dict.get)(traced_total_connections['bodyId_post'].values)
+        pre_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_pre'].values)
+        post_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_post'].values)
         graph = dgl.graph((pre_indexes, post_indexes), num_nodes=num_nodes)
         
         return graph
@@ -107,7 +128,7 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         labels = [label_idx_dict[label] for label in traced_neurons['instance'].values]
         return labels
         
-    def _preprocess_features(self, graph):
+    def _preprocess_degree_feats(self, graph):
         feats = torch.stack([graph.in_degrees(), graph.out_degrees()]).T.type(torch.float32)
         return feats
 

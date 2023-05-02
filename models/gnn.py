@@ -80,22 +80,6 @@ class SAGEGNN(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
         self.criterion = nn.CrossEntropyLoss()
-
-    def forward_stochastic(self, graph, x, output_labels = None):
-        '''
-        forward propagation under stochastic setting
-        '''
-        for idx, layer in enumerate(self.backbone):
-            x = layer(graph[idx], x)
-            x = self.relu(x)
-        x = self.cls_head(graph[idx], x)
-        x = self.softmax(x)
-        if self.training == True:
-            assert (output_labels is not None)
-            train_mask = graph.ndata["train_mask"]
-            x = self.criterion(x[train_mask], output_labels[train_mask])
-        return x
-        
     
     def forward(self, graph, x, output_labels = None):
         #print(self.net['backbone'])
