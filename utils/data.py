@@ -47,6 +47,8 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         # node degree
         degree = torch.tensor(self._preprocess_degree_feats(graph))
         
+        # TODO Add more features
+        
         # XYZ coordinates features
         synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
         # iterate through the df and add xyz coordinates to graph
@@ -60,6 +62,12 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
             if bodyId in self.bodyId_idx_dict:
                 exist += 1
                 XYZ[self.bodyId_idx_dict[bodyId], :] = torch.from_numpy(xyz)
+        
+        # TODO: add ground truth labels to a subset of nodes
+        # select a subset of nodes in graph
+        #labels = torch.zeros_like
+        # give them label
+        
         print('Number of nodes with xyz coordinates: ', exist)
         print('fraction of nodes with xyz coordinates: ', exist/num_nodes)
         # concat degree and xyz coordinates
@@ -111,6 +119,9 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         
         pre_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_pre'].values)
         post_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_post'].values)
+        
+        # TODO Topological sort graph?
+        # Maybe use the 3D coordinates for topological sort?
         graph = dgl.graph((pre_indexes, post_indexes), num_nodes=num_nodes)
         
         return graph
