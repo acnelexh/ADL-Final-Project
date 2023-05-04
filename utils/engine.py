@@ -14,7 +14,7 @@ def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, f)
 
-def train_one_epoch(model, optimizer, data_split, device, epoch, warm_up, writer = None):
+def train_one_epoch(model, optimizer, graph, epoch, warm_up):
     # train the model for one epoch
     model.train()
 
@@ -26,16 +26,15 @@ def train_one_epoch(model, optimizer, data_split, device, epoch, warm_up, writer
     #     warmup_iters = min(1000, len(data_loader) - 1)
     #     lr_scheduler = warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor)
     
-    graph = data_split["graph"]
-    feats = data_split["feats"]
-    labels = data_split["labels"]
+    feat = graph.ndata["feat"]
+    label = graph.ndata["label"]
     e_weight = graph.edata['w']
     
     # compute loss
     # TODO make this more generaliziable?
-    loss = model(graph, feats, e_weight, labels)
+    loss = model(graph, feat, e_weight, label)
     #loss = model(graph, feats, labels)
-    losses.append(loss.item())
+    losses.append(loss)
     
     # compute gradient and do optimizer step
     optimizer.zero_grad()
@@ -49,7 +48,7 @@ def train_one_epoch(model, optimizer, data_split, device, epoch, warm_up, writer
     return torch.mean(torch.tensor(losses))
 
 def train(model,
-          data_split,
+          graph,
           optimizer,
           lr_scheduler,
           write_dirs,
@@ -71,7 +70,7 @@ def train(model,
     for epoch in tqdm(range(args.epochs)):
         # train the model
         time = datetime.datetime.now()
-        loss = train_one_epoch(model, optimizer, data_split, device, epoch, warm_up)
+        loss = train_one_epoch(model, optimizer, graph, epoch, warm_up)
         epoch_time = datetime.datetime.now() - time
         lr_scheduler.step()
         # save the model
@@ -91,7 +90,7 @@ def train(model,
         if (epoch + 1) % args.log_epochs == 0 or (epoch + 1) == args.epochs:
             # evaluate the model
             time = datetime.datetime.now()
-            acc = evaluate(model, data_split, device, num_classes).item()
+            acc = evaluate(model, graph, device, num_classes).item()
             eval_time = datetime.datetime.now() - time
             with open(os.path.join(write_dirs, 'log.txt'), 'a') as f:
                 f.write(f'Epoch: {epoch},\t  validation accuracy: {round(acc, 4)},\t eval time: {eval_time}\n')
@@ -104,19 +103,19 @@ def train(model,
         writer.add_scalar('Loss/train', loss.item(), epoch)
         writer.add_scalar('Accuracy/val', acc, epoch)
         
-def evaluate(model, data_split, device, num_classes):
+def evaluate(model, graph, device, num_classes):
     # evaluate the model (acc for now)
     acc = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes).to(device)
     model.eval()
     
-    graph = data_split["graph"]
-    val_mask = data_split["val_mask"]
-    feats = data_split["feats"]
-    output_labels = data_split["labels"]
+    val_mask = graph.ndata["val_mask"]
+    feats = graph.ndata["feat"]
+    output_labels = graph.ndata["label"]
     e_weight = graph.edata['w']
     
     pred = model(graph, feats, e_weight)
-    acc.update(pred[val_mask], output_labels[val_mask])
+    
+    acc.update(pred[val_mask].argmax(dim=1), output_labels[val_mask])
 
     return acc.compute()
     

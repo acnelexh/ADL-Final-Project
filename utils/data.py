@@ -6,39 +6,66 @@ import torch
 import numpy as np
 import pandas as pd
 from dgl.nn import EdgeWeightNorm
-from dgl.data import DGLBuiltinDataset
 
-class HemiBrainGraphDataset(DGLBuiltinDataset):
+class HemiBrainGraphDataset():
     def __init__(self, args):
-        self.type = type
-        # read in data
-        traced_neurons = pd.read_csv(args.dataset + '/traced-neurons.csv')
-        traced_total_connections = pd.read_csv(args.dataset + '/traced-total-connections.csv')
+        # args stuff
+        self.random_split = args.random_split
+        self.data_split = args.data_split
+        self.device = args.device
+
+        # read in nodes=====================================================
+        nodes_df = pd.read_csv(args.dataset + '/traced-neurons.csv')
+        # remove nodes with empty label
+        nodes_df = self._remove_nodes(nodes_df)
+        self._build_bodyId_idx_dict(nodes_df)
+        self.num_nodes = nodes_df.shape[0]
+        self.num_classes = nodes_df['type'].nunique()
+        
+        # read in labels=====================================================
+        labels = self._preprocess_labels(nodes_df)
+        self._labels = torch.tensor(labels).type(torch.int64).to(self.device)
+        
+        # read in edges======================================================
+        edge_df = pd.read_csv(args.dataset + '/traced-total-connections.csv')
+        # remove edges that are not in the traced neurons df
+        edge_df = self._remove_edges(edge_df)
         #traced_roi_connections = pd.read_csv(args.dataset + '/traced-roi-connections.csv')
         
-        self.device = args.device
-        self._num_classes = traced_neurons['instance'].nunique()
+        # build graph
+        # TODO make sure graph is correct
+        # build graph and add features
+        graph = self._build_graph(edge_df)
+        graph = self._add_edge_weight(graph, edge_df)
+        graph.ndata['label'] = torch.tensor(labels).type(torch.int64)
+        graph = self._add_node_feats(graph, args)
+        graph = self._partition_graph(graph, random=args.random_split)
         
-        bodyIds = traced_total_connections['bodyId_post'].unique()
+        self._g = dgl.reorder_graph(graph).to(self.device)
+    
+    def _remove_nodes(self, df):
+        '''
+        Remove nodes with empty label
+        '''
+        df = df.dropna(subset=['type'])
+        return df
+    
+    def _remove_edges(self, df):
+        '''
+        Remove edges that are not in the traced neurons df
+        '''
+        existing_nodes = self.bodyId_idx_dict.keys()
+        df = df[df['bodyId_pre'].isin(existing_nodes)]
+        df = df[df['bodyId_post'].isin(existing_nodes)]
+        return df
+    
+    def _build_bodyId_idx_dict(self, df):
+        bodyIds = df['bodyId'].unique()
         bodyIds = sorted(bodyIds)
         
         self.bodyId_idx_dict = {}
         for i, bodyId in enumerate(bodyIds):
             self.bodyId_idx_dict[bodyId] = i
-            
-        # build graph
-        graph = self._build_graph(traced_total_connections)
-        graph = self._add_edge_weight(graph, traced_total_connections)
-        graph = self._add_node_feats(graph, args)
-        graph = self._partition_graph(graph)
-        
-        # preprocess labels
-        labels = self._preprocess_labels(traced_neurons, traced_total_connections)
-        graph.ndata['label'] = torch.tensor(labels).type(torch.int64)
-
-        # save graph and labels
-        self._labels = torch.tensor(labels).type(torch.int64).to(self.device)
-        self._g = dgl.reorder_graph(graph).to(self.device)
     
     def _add_node_feats(self, graph, args):
         '''
@@ -52,8 +79,7 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         # XYZ coordinates features
         synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
         # iterate through the df and add xyz coordinates to graph
-        num_nodes = 21663
-        XYZ = torch.zeros(num_nodes, 3)
+        XYZ = torch.zeros(self.num_nodes, 3) 
         exist = 0
         for index, row in synapses.iterrows():
             bodyId = row['bodyid']
@@ -65,14 +91,19 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         
         # TODO: add ground truth labels to a subset of nodes
         # select a subset of nodes in graph
-        #labels = torch.zeros_like
+        # labels = torch.zeros_like
         # give them label
+        label = graph.ndata['label'].clone()
+        # mask out 90% of the nodes
+        mask = torch.rand(self.num_nodes) > 0.1
+        label[mask] = -1
+        label = label.unsqueeze(1)
         
         print('Number of nodes with xyz coordinates: ', exist)
-        print('fraction of nodes with xyz coordinates: ', exist/num_nodes)
+        print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
         # concat degree and xyz coordinates
-        
-        graph.ndata['feat'] = torch.cat((degree, XYZ), dim=1)
+               
+        graph.ndata['feat'] = torch.cat((degree, XYZ, label), dim=1)
         return graph
     
     def _add_edge_weight(self, graph, traced_total_connections):
@@ -91,19 +122,39 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         graph.edata['w'] = norm_edge_weight
         return graph
         
-    
-    def _partition_graph(self, graph):
+    def _partition_graph(self, graph, random=True):
         '''
         Partition graph into train/val/test
         '''
-        num_nodes = 21663
-        train_mask = torch.zeros(num_nodes, dtype=bool)
-        val_mask = torch.zeros(num_nodes, dtype=bool)
-        test_mask = torch.zeros(num_nodes, dtype=bool)
+        def split_data(num_nodes, idx, split_type='train'):
+            train_ratio = int(num_nodes * self.data_split[0])
+            val_ratio = int(num_nodes * self.data_split[1])
+            test_ratio = int(num_nodes * self.data_split[2])
+            if split_type == 'train':
+                return idx[:train_ratio]
+            elif split_type == 'val':
+                return idx[train_ratio:train_ratio+val_ratio]
+            elif split_type == 'test':
+                return idx[-test_ratio:]
         
-        train_mask[0:15000] = True
-        val_mask[15000:16000] = True
-        test_mask[16000:] = True
+        train_mask = torch.zeros(self.num_nodes, dtype=bool)
+        val_mask = torch.zeros(self.num_nodes, dtype=bool)
+        test_mask = torch.zeros(self.num_nodes, dtype=bool)
+        
+        # split nodes into train/val/test
+        if random == True:
+            # random assignment
+            # pros: more balanced throughout the graph
+            # cons: might jeopardize the locality of the graph
+            idx = torch.randperm(self.num_nodes)
+        else:
+            # topological assignment
+            # pros: more locality
+            # cons: might not be balance
+            idx = torch.arange(self.num_nodes)
+        train_mask[split_data(self.num_nodes, idx, 'train')] = True
+        val_mask[split_data(self.num_nodes, idx, 'val')] = True
+        test_mask[split_data(self.num_nodes, idx, 'test')] = True
             
         graph.ndata['train_mask'] = train_mask
         graph.ndata['val_mask'] = val_mask
@@ -111,32 +162,31 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
         
         return graph
     
-    def _build_graph(self, traced_total_connections):
+    def _build_graph(self, edge_df):
         '''
         Build graph from traced_total_connections
         '''
-        num_nodes = 21663
-        
-        pre_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_pre'].values)
-        post_indexes = np.vectorize(self.bodyId_idx_dict.get)(traced_total_connections['bodyId_post'].values)
+
+        pre_indexes = np.vectorize(self.bodyId_idx_dict.get)(edge_df['bodyId_pre'].values)
+        post_indexes = np.vectorize(self.bodyId_idx_dict.get)(edge_df['bodyId_post'].values)
         
         # TODO Topological sort graph?
         # Maybe use the 3D coordinates for topological sort?
-        graph = dgl.graph((pre_indexes, post_indexes), num_nodes=num_nodes)
+        graph = dgl.graph((pre_indexes, post_indexes), num_nodes=self.num_nodes)
         
         return graph
     
     def get_num_classes(self):
-        return self._num_classes
+        return self.num_classes
     
-    def _preprocess_labels(self, traced_neurons, traced_total_connections):
-        unique_labels = traced_neurons['instance'].unique()
+    def _preprocess_labels(self, traced_neurons):
+        unique_labels = traced_neurons['type'].unique()
 
-        label_idx_dict = {}
+        self.label_idx_dict = {}
         for i, label in enumerate(unique_labels):
-            label_idx_dict[label] = i
+            self.label_idx_dict[label] = i
         
-        labels = [label_idx_dict[label] for label in traced_neurons['instance'].values]
+        labels = [self.label_idx_dict[label] for label in traced_neurons['type'].values]
         return labels
         
     def _preprocess_degree_feats(self, graph):
@@ -154,21 +204,5 @@ class HemiBrainGraphDataset(DGLBuiltinDataset):
 def get_hemibrain_split(args):
     dataset = HemiBrainGraphDataset(args)
     graph = dataset[0]
-    
-    # get split masks
-    train_mask = graph.ndata['train_mask']
-    val_mask = graph.ndata['val_mask']
-    test_mask = graph.ndata['test_mask']
 
-    # get node features
-    feats = graph.ndata['feat']
-
-    # get labels
-    labels = graph.ndata['label']
-    
-    return {"graph": graph,
-            "train_mask": train_mask,
-            "val_mask": val_mask,
-            "test_mask": test_mask,
-            "feats": feats,
-            "labels": labels}
+    return graph

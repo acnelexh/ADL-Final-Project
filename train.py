@@ -33,11 +33,14 @@ def get_args():
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--warm_up', help='warmup the learning rate')
     parser.add_argument('--hidden_dim', nargs='+', type=int, default=[64, 128, 512], help='hidden dimension')
-    parser.add_argument('--input_dim', type=int, default=2, help='input dimension')
+    parser.add_argument('--input_dim', type=int, default=6, help='input dimension')
+    parser.add_argument('--seed', type=int, default=1, help='random seed')
+    parser.add_argument('--random_split', default=False, help='randomly/topologically split the dataset')
     
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--data_split', type=float, default=[0.6, 0.2, 0.2], nargs='+', help='train/val/test split')
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
     
     # logging and saving
@@ -51,6 +54,8 @@ def get_args():
             
 
 def main(args):
+    torch.random.manual_seed(args.seed)
+    
     if not os.path.exists(args.tensorboard_log_dir):
         os.makedirs(args.tensorboard_log_dir)
     writer = SummaryWriter(log_dir=args.tensorboard_log_dir)
@@ -84,9 +89,9 @@ def main(args):
         raise RuntimeError("Invalid lr scheduler '{}'. Only MultiStepLR and CosineAnnealingLR "
                             "are supported.".format(args.lr_scheduler))
     
-    data_split = get_hemibrain_split(args)
+    graph = get_hemibrain_split(args)
     
-    train(model, data_split, optimizer, lr_scheduler, write_dir, args, writer)
+    train(model, graph, optimizer, lr_scheduler, write_dir, args, writer)
     
     # load best model and test
     #model = torch.load(os.path.join(write_dir, 'model_best.pth.tar'))
