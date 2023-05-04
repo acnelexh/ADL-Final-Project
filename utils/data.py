@@ -90,12 +90,14 @@ class HemiBrainGraphDataset():
                 XYZ[self.bodyId_idx_dict[bodyId], :] = torch.from_numpy(xyz)
         
         # TODO: add ground truth labels to a subset of nodes
-        # select a subset of nodes in graph
-        # labels = torch.zeros_like
-        # give them label
+        # select a subset of nodes in graph and give them label
+        # TODO: need better way to encode label instead of label encoding and one-hot encoding
+        # Create and look up label encoding?
+        self.LUT = torch.nn.Embedding(self.num_classes, 512)
+        
         label = graph.ndata['label'].clone()
         # mask out 90% of the nodes
-        mask = torch.rand(self.num_nodes) > 0.1
+        mask = torch.rand(self.num_nodes) > 0.9
         label[mask] = -1
         label = label.unsqueeze(1)
         
@@ -205,4 +207,4 @@ def get_hemibrain_split(args):
     dataset = HemiBrainGraphDataset(args)
     graph = dataset[0]
 
-    return graph
+    return graph, dataset.get_num_classes()

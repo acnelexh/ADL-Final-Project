@@ -11,7 +11,7 @@ def get_args():
     # required arguments
     parser.add_argument('--dataset', default='./data/exported-traced-adjacencies', help='dataset path')
     parser.add_argument('--model', default='SimpleGNN', help='model name')
-    parser.add_argument('--num_classes', type=int, default=6224, help='number of classes')
+    #parser.add_argument('--num_classes', type=int, default=6224, help='number of classes')
     
     # training options
     parser.add_argument('--output_dir', default='./runs',
@@ -76,6 +76,9 @@ def main(args):
             f.write("   --{} {} \\\n".format(key, value))
     
     # create model and optimizer
+    graph, num_classes = get_hemibrain_split(args)
+    args.num_classes = num_classes
+
     # hardcode for now
     model = fetch_model_fn(args)(args.input_dim, args.hidden_dim, args.num_classes)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
@@ -88,8 +91,6 @@ def main(args):
     else:
         raise RuntimeError("Invalid lr scheduler '{}'. Only MultiStepLR and CosineAnnealingLR "
                             "are supported.".format(args.lr_scheduler))
-    
-    graph = get_hemibrain_split(args)
     
     train(model, graph, optimizer, lr_scheduler, write_dir, args, writer)
     
