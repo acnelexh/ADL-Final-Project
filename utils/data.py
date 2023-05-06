@@ -21,6 +21,7 @@ class HemiBrainGraphDataset():
         self._build_bodyId_idx_dict(nodes_df)
         self.num_nodes = nodes_df.shape[0]
         self.num_classes = nodes_df['type'].nunique()
+        # make a graph with all nodes TODO
         
         # read in labels=====================================================
         labels = self._preprocess_labels(nodes_df)
@@ -92,14 +93,12 @@ class HemiBrainGraphDataset():
         # TODO: add ground truth labels to a subset of nodes
         # select a subset of nodes in graph and give them label
         # TODO: need better way to encode label instead of label encoding and one-hot encoding
-        # Create and look up label encoding?
-        self.LUT = torch.nn.Embedding(self.num_classes, 512)
-        
-        label = graph.ndata['label'].clone()
-        # mask out 90% of the nodes
-        mask = torch.rand(self.num_nodes) > 0.9
-        label[mask] = -1
-        label = label.unsqueeze(1)
+        # Bloom filter? 
+        label = torch.zeros(self.num_nodes, 1)
+        # select 10% of nodes randomly
+        idx = np.random.choice(self.num_nodes, int(self.num_nodes*0.1), replace=False)
+        label[idx, 0] = 1
+        # TODO select nodes based on their labels
         
         print('Number of nodes with xyz coordinates: ', exist)
         print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
@@ -108,12 +107,12 @@ class HemiBrainGraphDataset():
         graph.ndata['feat'] = torch.cat((degree, XYZ, label), dim=1)
         return graph
     
-    def _add_edge_weight(self, graph, traced_total_connections):
+    def _add_edge_weight(self, graph, edge_df):
         '''
         Assign edge weight to graph
         '''
         # get edge weight
-        e_weights = torch.tensor(traced_total_connections['weight'].values)
+        e_weights = torch.tensor(edge_df['weight'].values)
         edge_weight = e_weights.type(torch.float32) #3413160
         
         # normalize edge weight
@@ -202,6 +201,8 @@ class HemiBrainGraphDataset():
     def __len__(self):
         return 1
         
+# TODO stochastic dataloader/dataset class for hemibrain
+
 
 def get_hemibrain_split(args):
     dataset = HemiBrainGraphDataset(args)

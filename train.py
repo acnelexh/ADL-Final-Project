@@ -4,7 +4,7 @@ import torch
 import argparse
 import datetime
 from torch.utils.tensorboard import SummaryWriter
-from utils import train, fetch_model_fn, get_hemibrain_split
+from utils import train, fetch_model, get_hemibrain_split
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -34,9 +34,11 @@ def get_args():
     parser.add_argument('--warm_up', help='warmup the learning rate')
     parser.add_argument('--hidden_dim', nargs='+', type=int, default=[64, 128, 512], help='hidden dimension')
     parser.add_argument('--input_dim', type=int, default=6, help='input dimension')
+    parser.add_argument('--label_embed_dim', type=int, default=512, help='label embedding dimension')
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--random_split', default=False, help='randomly/topologically split the dataset')
-    
+    parser.add_argument('--label_weight', type=float, default=1.0, help='weight for CE loss for nodes with label embedding')
+    parser.add_argument('--unlabel_weight', type=float, default=1.0, help='weight for CE loss for nodes without label embedding')
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
@@ -78,9 +80,8 @@ def main(args):
     # create model and optimizer
     graph, num_classes = get_hemibrain_split(args)
     args.num_classes = num_classes
-
     # hardcode for now
-    model = fetch_model_fn(args)(args.input_dim, args.hidden_dim, args.num_classes)
+    model = fetch_model(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
     if args.lr_scheduler == 'multisteplr':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
