@@ -81,14 +81,42 @@ class HemiBrainGraphDataset():
         synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
         # iterate through the df and add xyz coordinates to graph
         XYZ = torch.zeros(self.num_nodes, 3) 
+
+        # other features (by index):
+            # 0: pre
+            # 1: post
+            # 2: upstream
+            # 3: downstream
+            # 4: total_outputs
+            # 5: total_inputs
+            # 6: total_outputs_density
+            # 7: total_inputs_density
+            # 8: total_length
+        other_features = torch.zeros(self.num_nodes, 9)
+
+
         exist = 0
+
         for index, row in synapses.iterrows():
             bodyId = row['bodyid']
-            xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
             # seems like not all the bodyIds are in the graph
             if bodyId in self.bodyId_idx_dict:
                 exist += 1
-                XYZ[self.bodyId_idx_dict[bodyId], :] = torch.from_numpy(xyz)
+                xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
+                body_idx = self.bodyId_idx_dict[bodyId]
+                XYZ[body_idx, :] = torch.from_numpy(xyz)
+
+                ## other features
+                other_features[body_idx, :] = torch.from_numpy(row[['pre', 
+                                                                    'post',
+                                                                    'upstream',
+                                                                    'downstream',
+                                                                    'total_outputs',
+                                                                    'total_inputs',
+                                                                    'total_outputs_density',
+                                                                    'total_inputs_density',
+                                                                    'total_length']].values.astype(np.float32)) # ints converted to floats for norm
+
         
         # TODO: add ground truth labels to a subset of nodes
         # select a subset of nodes in graph and give them label
@@ -104,7 +132,13 @@ class HemiBrainGraphDataset():
         print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
         # concat degree and xyz coordinates
                
-        graph.ndata['feat'] = torch.cat((degree, XYZ, label), dim=1)
+        graph.ndata['feat'] = torch.cat((degree, XYZ, label, other_features), dim=1)
+
+        # optional normalization
+        if args.normalize:
+            for i in range(graph.ndata['feat'].shape[1]):
+                graph.ndata['feat'][:, i] /= sum(graph.ndata['feat'][:, i]) # unit norm - careful of zero division error
+
         return graph
     
     def _add_edge_weight(self, graph, edge_df):
