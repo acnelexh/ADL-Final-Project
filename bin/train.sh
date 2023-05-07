@@ -4,11 +4,11 @@
 
 python train.py \
    --dataset ./data/exported-traced-adjacencies \
+   --no-normalize \
    --model SimpleGNN \
-   --num_classes 6224 \
    --output_dir ./runs \
    --tensorboard_log_dir ./tensorboard_log \
-   --lr 0.01 \
+   --lr 0.00001 \
    --lr_scheduler steplr \
    --lr_step_size 20\
    --lr_gamma 0.8 \
@@ -18,7 +18,7 @@ python train.py \
    --weight_decay 0.0001 \
    --warm_up None \
    --num_workers 0 \
-   --device cuda \
+   --device cpu \
    --print_freq 1 \
    --save_model_interval 1000 \
    --log_epochs 1 \
