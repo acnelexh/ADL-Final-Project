@@ -10,6 +10,8 @@ def get_args():
     parser = argparse.ArgumentParser()
     # required arguments
     parser.add_argument('--dataset', default='./data/exported-traced-adjacencies', help='dataset path')
+    parser.add_argument('--normalize', type=bool, default=False, help='whether to normalize node features',
+                        action=argparse.BooleanOptionalAction)
     parser.add_argument('--model', default='SimpleGNN', help='model name')
     #parser.add_argument('--num_classes', type=int, default=6224, help='number of classes')
     
