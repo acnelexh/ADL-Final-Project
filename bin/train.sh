@@ -23,5 +23,5 @@ python train.py \
    --save_model_interval 1000 \
    --log_epochs 1 \
    --hidden_dim 128 128 128 128\
-   --input_dim 5
+   --input_dim 15
 
