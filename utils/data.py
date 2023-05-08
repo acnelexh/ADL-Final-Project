@@ -2,6 +2,7 @@
 from dgl.dataloading import DataLoader
 import dgl.function as fn
 import dgl
+from collections import deque
 import torch
 import numpy as np
 import pandas as pd
@@ -118,21 +119,137 @@ class HemiBrainGraphDataset():
                                                                     'total_length']].values.astype(np.float32)) # ints converted to floats for norm
 
         
+        def investigate_label(graph):
+            '''
+            collect stats about labels
+            '''
+            from matplotlib import pyplot as plt
+            label = graph.ndata['label']
+            unique, counts = np.unique(label, return_counts=True)
+            print(unique.sum())
+            print(counts.min())
+            print(counts.max())
+            # cap the y axis to range 0 - 150
+            plt.ylim(0, 150)
+            plt.bar(unique, counts)
+            plt.title('Label Frequency')
+            plt.xlabel('Label')
+            plt.ylabel('Frequency')
+            plt.savefig('label_frequency.png')
+        
+        #investigate_label(graph)
+        
+        def sample_by_label(graph, proportion):
+            '''
+            Sample nodes by label, more throughout representation of labels
+            args:
+                graph: dgl graph
+                proportion: proportion of nodes to sample
+            return:
+                a node mask with 1 for sampled nodes and 0 for unsampled nodes
+            '''
+            label = graph.ndata['label']
+            unique, counts = np.unique(label, return_counts=True)
+            # rank labels by frequency
+            sorted_idx = np.argsort(counts)
+            sorted_idx = sorted_idx[::-1]
+            # sample nodes from each label until proportion is reached
+            label_mask = torch.zeros(graph.num_nodes())
+            num_sample = int(graph.num_nodes() * proportion)
+            mask_count = 0
+            # prioritize sampling nodes from each class first
+            for i in sorted_idx:
+                if mask_count >= num_sample:
+                    break
+                label_idx = torch.nonzero(label == unique[i]).squeeze()
+                # randomly sample a node from label_idx
+                selected_idx = torch.randint(0, label_idx.shape[0], (1,))
+                label_mask[label_idx[selected_idx]] = 1
+                mask_count += 1
+            # now each label has at least one node sampled, 
+            # sample the rest randomly if neccessary
+            if mask_count < num_sample: # Not yet tested
+                label_mask = label_mask.type(torch.bool)
+                label_idx = torch.nonzero(label_mask == 0).squeeze()
+                num_sample = int(graph.num_nodes() * proportion) - mask_count
+                selected_idx = torch.randint(0, label_idx.shape[0], (num_sample,))
+                label_mask[label_idx[selected_idx]] = 1
+            return label_mask
+        
+        def sample_by_degree(graph, proportion):
+            '''
+            Sample nodes by out degree, nodes with higher degree are more likely to be sampled
+            args:
+                graph: dgl graph
+                proportion: proportion of nodes to sample
+            return:
+                a node mask with 1 for sampled nodes and 0 for unsampled nodes
+            '''
+            out_degree = graph.out_degrees()
+            num_sample = int(graph.num_nodes() * proportion)
+            _, idx = torch.sort(out_degree, descending=True)
+            label_mask = torch.zeros(graph.num_nodes())
+            label_mask[idx[:num_sample]] = 1
+            return label_mask
+            
+        
+        def sample_by_locality(graph, proportion):
+            '''
+            Sample only a interconnected subgraph
+            args:
+                graph: dgl graph
+                proportion: proportion of nodes to sample
+            return:
+                a node mask with 1 for sampled nodes and 0 for unsampled nodes
+            '''
+            num_sample = int(graph.num_nodes() * proportion)
+            label_mask = torch.zeros(graph.num_nodes())
+            node_counts = 0
+            dq = deque()
+            # select a node to start, heuristic based on out degree
+            out_degree = graph.out_degrees()
+            _, idx = torch.sort(out_degree, descending=True)
+            node = idx[0]
+            dq.append(node)
+            # do a BFS traversal
+            while node_counts < num_sample and len(dq) > 0:
+                node = dq.popleft()
+                label_mask[node] = 1
+                node_counts += 1
+                # add successor to mask
+                for successor in graph.successors(node):
+                    if label_mask[successor] == 0:
+                        dq.append(successor)
+            return label_mask
+
+        def random_sample(graph, proportion):
+            '''
+            Sample randomly, sample proportion to number of nodes
+            args:
+                graph: dgl graph
+                proportion: proportion of nodes to sample
+            return:
+                a node mask with 1 for sampled nodes and 0 for unsampled nodes
+            '''
+            num_nodes = graph.ndata['label'].shape[0]
+            label_mask = torch.zeros(self.num_nodes, 1)
+            idx = np.random.choice(
+                num_nodes, int(num_nodes*proportion), replace=False)
+            label_mask[idx, 0] = 1
+            return label_mask
+        
         # TODO: add ground truth labels to a subset of nodes
         # select a subset of nodes in graph and give them label
         # TODO: need better way to encode label instead of label encoding and one-hot encoding
         # Bloom filter? 
-        label = torch.zeros(self.num_nodes, 1)
-        # select 10% of nodes randomly
-        idx = np.random.choice(self.num_nodes, int(self.num_nodes*0.1), replace=False)
-        label[idx, 0] = 1
-        # TODO select nodes based on their labels
+        label_mask = sample_by_label(graph, args.proportion)
         
-        print('Number of nodes with xyz coordinates: ', exist)
-        print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
+        #print('Number of nodes with xyz coordinates: ', exist)
+        #print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
         # concat degree and xyz coordinates
-               
-        graph.ndata['feat'] = torch.cat((degree, XYZ, label, other_features), dim=1)
+        
+        graph.ndata['label_mask'] = label_mask
+        graph.ndata['feat'] = torch.cat((degree, XYZ, other_features), dim=1)
 
         # optional normalization
         if args.normalize:
