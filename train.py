@@ -39,6 +39,9 @@ def get_args():
     parser.add_argument('--random_split', default=False, help='randomly/topologically split the dataset')
     parser.add_argument('--label_weight', type=float, default=1.0, help='weight for CE loss for nodes with label embedding')
     parser.add_argument('--unlabel_weight', type=float, default=1.0, help='weight for CE loss for nodes without label embedding')
+    parser.add_argument('--normalize', default=True, help='normalize the features')
+    parser.add_argument('--proportion', type=float, default=0.1, help='proportion of nodes with label embedding')
+    parser.add_argument('--sample_method', default='random', help='sample method for label embedding, options: [random, degree, locality, label]')
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
@@ -80,6 +83,7 @@ def main(args):
     # create model and optimizer
     graph, num_classes = get_hemibrain_split(args)
     args.num_classes = num_classes
+    args.input_dim = graph.ndata['feat'].shape[1]
     # hardcode for now
     model = fetch_model(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)

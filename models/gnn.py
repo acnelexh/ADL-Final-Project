@@ -54,7 +54,7 @@ class SimpleGNN(nn.Module):
         Look up label embedding
         '''
         node_label = graph.ndata['label']
-        label_mask = feats[:, -1]
+        label_mask = graph.ndata['label_mask']
         look_up = torch.zeros(feats.shape[0]).to(feats.device)
         for idx, mask in enumerate(label_mask):
             if mask == 1:

@@ -163,8 +163,12 @@ class HemiBrainGraphDataset():
                     break
                 label_idx = torch.nonzero(label == unique[i]).squeeze()
                 # randomly sample a node from label_idx
-                selected_idx = torch.randint(0, label_idx.shape[0], (1,))
-                label_mask[label_idx[selected_idx]] = 1
+                # if singular value
+                if len(label_idx.shape) == 0:
+                    label_mask[label_idx] = 1
+                else:
+                    selected_idx = torch.randint(0, label_idx.shape[0], (1,))
+                    label_mask[label_idx[selected_idx]] = 1
                 mask_count += 1
             # now each label has at least one node sampled, 
             # sample the rest randomly if neccessary
@@ -242,7 +246,16 @@ class HemiBrainGraphDataset():
         # select a subset of nodes in graph and give them label
         # TODO: need better way to encode label instead of label encoding and one-hot encoding
         # Bloom filter? 
-        label_mask = sample_by_label(graph, args.proportion)
+        if args.sample_method == 'random':
+            label_mask = random_sample(graph, args.proportion)
+        elif args.sample_method == 'label':
+            label_mask = sample_by_label(graph, args.proportion)
+        elif args.sample_method == 'degree':
+            label_mask = sample_by_degree(graph, args.proportion)
+        elif args.sample_method == 'locality':
+            label_mask = sample_by_locality(graph, args.proportion)
+        else:
+            raise NotImplementedError
         
         #print('Number of nodes with xyz coordinates: ', exist)
         #print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
