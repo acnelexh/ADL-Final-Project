@@ -42,6 +42,7 @@ def get_args():
     parser.add_argument('--normalize', default=True, help='normalize the features')
     parser.add_argument('--proportion', type=float, default=0.1, help='proportion of nodes with label embedding')
     parser.add_argument('--sample_method', default='random', help='sample method for label embedding, options: [random, degree, locality, label]')
+    parser.add_argument('--num_heads', type=int, default=4, help='number of attention heads for GAT model')
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)

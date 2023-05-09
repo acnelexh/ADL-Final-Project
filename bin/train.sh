@@ -1,27 +1,32 @@
 #!/bin/bash
 
-# This script is used to train the model
-
 python train.py \
    --dataset ./data/exported-traced-adjacencies \
-   --no-normalize \
-   --model SimpleGNN \
+   --normalize True \
+   --model GATGNN \
    --output_dir ./runs \
    --tensorboard_log_dir ./tensorboard_log \
-   --lr 0.00001 \
-   --lr_scheduler steplr \
-   --lr_step_size 20\
-   --lr_gamma 0.8 \
+   --lr 0.001 \
+   --lr_scheduler multisteplr \
+   --lr_step_size 20 \
+   --lr_steps 16 22 40 \
+   --lr_gamma 0.1 \
    --lr_decay 1e-05 \
-   --epochs 100 \
+   --epochs 50 \
    --batch_size 32 \
    --weight_decay 0.0001 \
    --warm_up None \
+   --hidden_dim 512 512\
+   --input_dim 15 \
+   --label_embed_dim 64 \
+   --seed 1 \
+   --random_split False \
+   --label_weight 1.0 \
+   --unlabel_weight 1.0 \
    --num_workers 0 \
+   --data_split 0.6 0.2 0.2 \
    --device cpu \
    --print_freq 1 \
    --save_model_interval 1000 \
    --log_epochs 1 \
-   --hidden_dim 128 128 128 128\
-   --input_dim 15
-
+   --num_heads 4
