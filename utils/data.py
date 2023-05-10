@@ -34,9 +34,9 @@ class HemiBrainGraphDataset():
         
         edge_df = self._remove_edges(edge_df)
         ## add self edges
-        print(edge_df.head())
-        print(edge_df.shape)
-        print(len(self.bodyId_idx_dict.keys()))
+        #print(edge_df.head())
+        #print(edge_df.shape)
+        #print(len(self.bodyId_idx_dict.keys()))
         # for bodyIdx in self.bodyId_idx_dict.keys():
         #     # edge_df.loc[len(edge_df.index)] = [bodyIdx, bodyIdx, 1]
         #     new_row = pd.Series({'bodyId_pre': bodyIdx, 'bodyId_post': bodyIdx, 'weight': 1})
@@ -95,67 +95,62 @@ class HemiBrainGraphDataset():
         # node degree
         degree = torch.tensor(self._preprocess_degree_feats(graph))
         
-        # TODO Add more features
-        
-        # XYZ coordinates features
-        synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
-        # iterate through the df and add xyz coordinates to graph
-        XYZ = torch.zeros(self.num_nodes, 3) 
-
-        # other features (by index):
-            # 0: pre
-            # 1: post
-            # 2: upstream
-            # 3: downstream
-            # 4: total_outputs
-            # 5: total_inputs
-            # 6: total_outputs_density
-            # 7: total_inputs_density
-            # 8: total_length
-        other_features = torch.zeros(self.num_nodes, 9)
-
-
-        exist = 0
-
-        for index, row in synapses.iterrows():
-            bodyId = row['bodyid']
-            # seems like not all the bodyIds are in the graph
-            if bodyId in self.bodyId_idx_dict:
-                exist += 1
-                xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
-                body_idx = self.bodyId_idx_dict[bodyId]
-                XYZ[body_idx, :] = torch.from_numpy(xyz)
-
-                ## other features
-                other_features[body_idx, :] = torch.from_numpy(row[['pre', 
-                                                                    'post',
-                                                                    'upstream',
-                                                                    'downstream',
-                                                                    'total_outputs',
-                                                                    'total_inputs',
-                                                                    'total_outputs_density',
-                                                                    'total_inputs_density',
-                                                                    'total_length']].values.astype(np.float32)) # ints converted to floats for norm
-
-    
-        # Bloom filter? 
-        if args.sample_method == 'random':
-            label_mask = random_sample(graph, args.proportion)
-        elif args.sample_method == 'label':
-            label_mask = sample_by_label(graph, args.proportion)
-        elif args.sample_method == 'degree':
-            label_mask = sample_by_degree(graph, args.proportion)
-        elif args.sample_method == 'locality':
-            label_mask = sample_by_locality(graph, args.proportion)
+        if args.topological_feature:
+            graph.ndata['feat'] = degree
         else:
-            raise NotImplementedError
-        
-        #print('Number of nodes with xyz coordinates: ', exist)
-        #print('fraction of nodes with xyz coordinates: ', exist/self.num_nodes)
-        # concat degree and xyz coordinates
-        
-        graph.ndata['label_mask'] = label_mask
-        graph.ndata['feat'] = torch.cat((degree, XYZ,  other_features), dim=1)
+            # XYZ coordinates features
+            synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
+            # iterate through the df and add xyz coordinates to graph
+            XYZ = torch.zeros(self.num_nodes, 3) 
+
+            # other features (by index):
+                # 0: pre
+                # 1: post
+                # 2: upstream
+                # 3: downstream
+                # 4: total_outputs
+                # 5: total_inputs
+                # 6: total_outputs_density
+                # 7: total_inputs_density
+                # 8: total_length
+            other_features = torch.zeros(self.num_nodes, 9)
+
+            exist = 0
+
+            for index, row in synapses.iterrows():
+                bodyId = row['bodyid']
+                # seems like not all the bodyIds are in the graph
+                if bodyId in self.bodyId_idx_dict:
+                    exist += 1
+                    xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
+                    body_idx = self.bodyId_idx_dict[bodyId]
+                    XYZ[body_idx, :] = torch.from_numpy(xyz)
+
+                    ## other features
+                    other_features[body_idx, :] = torch.from_numpy(row[['pre', 
+                                                                        'post',
+                                                                        'upstream',
+                                                                        'downstream',
+                                                                        'total_outputs',
+                                                                        'total_inputs',
+                                                                        'total_outputs_density',
+                                                                        'total_inputs_density',
+                                                                        'total_length']].values.astype(np.float32)) # ints converted to floats for norm
+                    
+            graph.ndata['feat'] = torch.cat((degree, XYZ, other_features), dim=1)
+
+        if args.few_shot:
+            if args.sample_method == 'random':
+                label_mask = random_sample(graph, args.proportion)
+            elif args.sample_method == 'label':
+                label_mask = sample_by_label(graph, args.proportion)
+            elif args.sample_method == 'degree':
+                label_mask = sample_by_degree(graph, args.proportion)
+            elif args.sample_method == 'locality':
+                label_mask = sample_by_locality(graph, args.proportion)
+            else:
+                raise NotImplementedError
+            graph.ndata['label_mask'] = label_mask
 
         # optional normalization
         if args.normalize:
@@ -169,14 +164,14 @@ class HemiBrainGraphDataset():
         '''
         # get edge weight
         e_weights = torch.tensor(edge_df['weight'].values)
-        print(e_weights.shape)
+        #print(e_weights.shape)
         # for i in range(self.num_nodes):
         #     e_weights.cat( i, i, 1 ) # self loop of weight 1
         edge_weight = e_weights.type(torch.float32) #3413160
         
         # normalize edge weight
         norm = EdgeWeightNorm(norm='both')
-        print(edge_weight.shape)
+        #print(edge_weight.shape)
         norm_edge_weight = norm(graph, edge_weight)
 
         # norm_edge_weight
@@ -223,11 +218,11 @@ class HemiBrainGraphDataset():
         test_mask[split_data(self.num_nodes, idx, 'test')] = True
             
         graph.ndata['train_mask'] = train_mask
-        print(graph.ndata['train_mask'].shape)
+        #print(graph.ndata['train_mask'].shape)
         graph.ndata['val_mask'] = val_mask
-        print(graph.ndata['val_mask'].shape)
+        #print(graph.ndata['val_mask'].shape)
         graph.ndata['test_mask'] = test_mask
-        print(graph.ndata['test_mask'].shape)
+        #print(graph.ndata['test_mask'].shape)
         
         return graph
     
@@ -252,9 +247,9 @@ class HemiBrainGraphDataset():
         # TODO Topological sort graph?
         # Maybe use the 3D coordinates for topological sort?
         graph = dgl.graph((pre_indexes, post_indexes), num_nodes=self.num_nodes)
-        print(graph.num_edges)
+        #print(graph.num_edges)
         # graph = dgl.add_self_loop(graph) # redundant
-        print(graph.num_edges)
+        #print(graph.num_edges)
         
         return graph
     

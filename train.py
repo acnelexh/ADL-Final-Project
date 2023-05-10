@@ -32,10 +32,14 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--warm_up', help='warmup the learning rate')
+    parser.add_argument('--seed', type=int, default=1, help='random seed')
+    
+    # model parameters
     parser.add_argument('--hidden_dim', nargs='+', type=int, default=[64, 128, 512], help='hidden dimension')
     parser.add_argument('--input_dim', type=int, default=6, help='input dimension')
     parser.add_argument('--label_embed_dim', type=int, default=512, help='label embedding dimension')
-    parser.add_argument('--seed', type=int, default=1, help='random seed')
+    
+    # experiment parameters
     parser.add_argument('--random_split', default=False, help='randomly/topologically split the dataset')
     parser.add_argument('--label_weight', type=float, default=1.0, help='weight for CE loss for nodes with label embedding')
     parser.add_argument('--unlabel_weight', type=float, default=1.0, help='weight for CE loss for nodes without label embedding')
@@ -43,6 +47,10 @@ def get_args():
     parser.add_argument('--proportion', type=float, default=0.1, help='proportion of nodes with label embedding')
     parser.add_argument('--sample_method', default='random', help='sample method for label embedding, options: [random, degree, locality, label]')
     parser.add_argument('--num_heads', type=int, default=4, help='number of attention heads for GAT model')
+    parser.add_argument('--edge_weight', default=False, help='use edge weight for GraphConvPlus')
+    parser.add_argument('--topological_feature', default=True, help='use topological feature only')
+    parser.add_argument('--few_shot', default=False, help='few shot learning with label embedding')
+    parser.add_argument('--class_balance_loss', default=False, help='use class balance loss, if this is true then not using label embedding')
     
     # dataloader parameters
     parser.add_argument('--num_workers', type=int, default=0)
