@@ -48,9 +48,12 @@ class SimpleGNN(nn.Module):
         # create backbone
         for idx in range(1, len(hidden_features)):
             if args.edge_weight == False:
+                print('Using GraphConv')
                 self.backbone.append(GraphConv(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
             else:
+                print('Using GraphConvPlus')
                 self.backbone.append(GraphConvPlus(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
+        self.edge_weight = args.edge_weight
         self.cls_head = GraphConv(hidden_features[-1], out_features, allow_zero_in_degree=True)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
@@ -81,7 +84,7 @@ class SimpleGNN(nn.Module):
             label_embedding = self.label_lookup(graph, x)
             x = torch.cat([x, label_embedding], dim=1)
         for idx, layer in enumerate(self.backbone):
-            if edge_weight is not None:
+            if self.edge_weight == True:
                 x = layer(graph, x, edge_weight)
             else:
                 x = layer(graph, x)
@@ -110,10 +113,10 @@ class SimpleGNN(nn.Module):
         Node with label given should have more weight
         Node without label given should have less weight
         '''
-        label_mask = graph.ndata['feat'][:, -1]
+        label_mask = graph.ndata["label_mask"].reshape(-1)
         train_mask = graph.ndata["train_mask"]
         loss[label_mask == 1] *= self.label_weight
-        loss[train_mask == 0] *= self.unlabel_weight
+        loss[label_mask == 0] *= self.unlabel_weight
         loss = loss[train_mask].mean()
         return loss
 

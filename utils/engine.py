@@ -18,8 +18,6 @@ def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
 def train_one_epoch(model, optimizer, graph, epoch, warm_up, args):
     # train the model for one epoch
     model.train()
-
-
     lr_scheduler = None
     # if (warm_up == True) and (epoch == 0):
     #     warmup_factor = 1. / 1000
@@ -31,8 +29,7 @@ def train_one_epoch(model, optimizer, graph, epoch, warm_up, args):
     edge_weight = graph.edata['w']
     
     # compute loss
-    # TODO make this more generaliziable?
-    if args.edge_weight:
+    if args.edge_weight == True:
         loss = model(graph, feat, output_labels=label, edge_weight=edge_weight)
     else:
         loss = model(graph, feat, output_labels=label, edge_weight=None)
@@ -66,9 +63,9 @@ def train(model,
     device = args.device
     warm_up = args.warm_up
     eval_acc = dict()
-    num_classes = args.num_classes
+    train_acc = dict()
     losses = dict()
-    
+
     model.to(device)
     for epoch in tqdm(range(args.epochs)):
         # train the model
@@ -82,6 +79,11 @@ def train(model,
             torch.save(model, os.path.join(write_dirs, 'model_{}.pth'.format(epoch)))
             torch.save(model, os.path.join(write_dirs, 'model_last.pth'))
         # evaluate the model
+        if args.edge_weight == True:
+            acc = evaluate(model, graph, split_mask='train_mask', e_weight=graph.edata['w']).item()
+        else:
+            acc = evaluate(model, graph, split_mask='train_mask').item()
+        train_acc[epoch] = acc
         time = datetime.datetime.now()
         if args.edge_weight:
             acc = evaluate(model, graph, split_mask='val_mask', e_weight=graph.edata['w']).item()
@@ -102,7 +104,7 @@ def train(model,
         writer.add_scalar('Accuracy/val', acc, epoch)
     # plot the accuracy and loss
     plot_loss(losses, write_dirs)
-    plot_acc(eval_acc, write_dirs)
+    plot_acc(train_acc, eval_acc, write_dirs)
     # load the best model
     best_model = torch.load(os.path.join(write_dirs, 'model_best.pth'))
     # test the model
@@ -124,8 +126,9 @@ def plot_loss(loss, write_dirs):
     plt.savefig(os.path.join(write_dirs, 'loss.png'))
     plt.close()
 
-def plot_acc(eval_acc, write_dirs):
+def plot_acc(train_acc, eval_acc, write_dirs):
     plt.clf()
+    plt.plot(train_acc.keys(), train_acc.values(), label='train')
     plt.plot(eval_acc.keys(), eval_acc.values(), label='eval')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')

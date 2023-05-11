@@ -31,16 +31,9 @@ class HemiBrainGraphDataset():
         # read in edges======================================================
         edge_df = pd.read_csv(args.dataset + '/traced-total-connections.csv')
         # remove edges that are not in the traced neurons df
-        
         edge_df = self._remove_edges(edge_df)
-        ## add self edges
-        #print(edge_df.head())
-        #print(edge_df.shape)
-        #print(len(self.bodyId_idx_dict.keys()))
-        # for bodyIdx in self.bodyId_idx_dict.keys():
-        #     # edge_df.loc[len(edge_df.index)] = [bodyIdx, bodyIdx, 1]
-        #     new_row = pd.Series({'bodyId_pre': bodyIdx, 'bodyId_post': bodyIdx, 'weight': 1})
-        #     edge_df = pd.concat([edge_df, new_row])
+        
+        # add self loops
         self_loop_array = np.zeros((self.num_nodes, 3))
         for i, bodyId in enumerate(self.bodyId_idx_dict.keys()):
             self_loop_array[i, 0] = bodyId
@@ -50,11 +43,6 @@ class HemiBrainGraphDataset():
 
         edge_df = pd.concat([edge_df, self_loop_df])
 
-        # print(edge_df.shape)
-        #traced_roi_connections = pd.read_csv(args.dataset + '/traced-roi-connections.csv')
-        
-        # build graph
-        # TODO make sure graph is correct
         # build graph and add features
         graph = self._build_graph(edge_df)
         graph = self._add_edge_weight(graph, edge_df)
@@ -98,6 +86,7 @@ class HemiBrainGraphDataset():
         if args.topological_feature:
             graph.ndata['feat'] = degree
         else:
+            print('add more features')
             # XYZ coordinates features
             synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
             # iterate through the df and add xyz coordinates to graph
