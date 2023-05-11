@@ -1,121 +1,18 @@
-import torch.nn.init as init
-
 import os
 os.environ['DGLBACKEND'] = 'pytorch'
 import torch
 import torch.nn as nn
-
-from dgl.utils import expand_as_pair
+import torch.nn.init as init
 import dgl.function as fn
+from dgl.utils import expand_as_pair
 
 __all__ = ['GraphConvPlus']
-
 # pylint: disable=W0235
 
 class GraphConvPlus(nn.Module):
-    r"""
-    Description
-    -----------
-    Graph convolution was introduced in `GCN <https://arxiv.org/abs/1609.02907>`__
-    and mathematically is defined as follows:
-    .. math::
-      h_i^{(l+1)} = \sigma(b^{(l)} + \sum_{j\in\mathcal{N}(i)}\frac{1}{c_{ij}}h_j^{(l)}W^{(l)})
-    where :math:`\mathcal{N}(i)` is the set of neighbors of node :math:`i`,
-    :math:`c_{ij}` is the product of the square root of node degrees
-    (i.e.,  :math:`c_{ij} = \sqrt{|\mathcal{N}(i)|}\sqrt{|\mathcal{N}(j)|}`),
-    and :math:`\sigma` is an activation function.
-
-    Parameters
-    ----------
-    in_feats : int
-        Input feature size; i.e, the number of dimensions of :math:`h_j^{(l)}`.
-    out_feats : int
-        Output feature size; i.e., the number of dimensions of :math:`h_i^{(l+1)}`.
-    norm : str, optional
-        How to apply the normalizer. If is `'right'`, divide the aggregated messages
-        by each node's in-degrees, which is equivalent to averaging the received messages.
-        If is `'none'`, no normalization is applied. Default is `'both'`,
-        where the :math:`c_{ij}` in the paper is applied.
-    weight : bool, optional
-        If True, apply a linear layer. Otherwise, aggregating the messages
-        without a weight matrix.
-    bias : bool, optional
-        If True, adds a learnable bias to the output. Default: ``True``.
-    activation : callable activation function/layer or None, optional
-        If not None, applies an activation function to the updated node features.
-        Default: ``None``.
-    allow_zero_in_degree : bool, optional
-        If there are 0-in-degree nodes in the graph, output for those nodes will be invalid
-        since no message will be passed to those nodes. This is harmful for some applications
-        causing silent performance regression. This module will raise a DGLError if it detects
-        0-in-degree nodes in input graph. By setting ``True``, it will suppress the check
-        and let the users handle it by themselves. Default: ``False``.
-
-    Attributes
-    ----------
-    weight : torch.Tensor
-        The learnable weight tensor.
-    bias : torch.Tensor
-        The learnable bias tensor.
-
-    Note
-    ----
-    Zero in-degree nodes will lead to invalid output value. This is because no message
-    will be passed to those nodes, the aggregation function will be appied on empty input.
-    A common practice to avoid this is to add a self-loop for each node in the graph if
-    it is homogeneous, which can be achieved by:
-    >>> g = ... # a DGLGraph
-    >>> g = dgl.add_self_loop(g)
-    Calling ``add_self_loop`` will not work for some graphs, for example, heterogeneous graph
-    since the edge type can not be decided for self_loop edges. Set ``allow_zero_in_degree``
-    to ``True`` for those cases to unblock the code and handle zere-in-degree nodes manually.
-    A common practise to handle this is to filter out the nodes with zere-in-degree when use
-    after conv.
-
-    Examples
-    --------
-    >>> import dgl
-    >>> import numpy as np
-    >>> import torch as th
-    >>> from dgl.nn import GraphConv
-    >>> # Case 1: Homogeneous graph
-    >>> g = dgl.graph(([0,1,2,3,2,5], [1,2,3,4,0,3]))
-    >>> g = dgl.add_self_loop(g)
-    >>> feat = th.ones(6, 10)
-    >>> conv = GraphConv(10, 2, norm='both', weight=True, bias=True)
-    >>> res = conv(g, feat)
-    >>> print(res)
-    tensor([[ 1.3326, -0.2797],
-            [ 1.4673, -0.3080],
-            [ 1.3326, -0.2797],
-            [ 1.6871, -0.3541],
-            [ 1.7711, -0.3717],
-            [ 1.0375, -0.2178]], grad_fn=<AddBackward0>)
-    >>> # allow_zero_in_degree example
-    >>> g = dgl.graph(([0,1,2,3,2,5], [1,2,3,4,0,3]))
-    >>> conv = GraphConv(10, 2, norm='both', weight=True, bias=True, allow_zero_in_degree=True)
-    >>> res = conv(g, feat)
-    >>> print(res)
-    tensor([[-0.2473, -0.4631],
-            [-0.3497, -0.6549],
-            [-0.3497, -0.6549],
-            [-0.4221, -0.7905],
-            [-0.3497, -0.6549],
-            [ 0.0000,  0.0000]], grad_fn=<AddBackward0>)
-    >>> # Case 2: Unidirectional bipartite graph
-    >>> u = [0, 1, 0, 0, 1]
-    >>> v = [0, 1, 2, 3, 2]
-    >>> g = dgl.bipartite((u, v))
-    >>> u_fea = th.rand(2, 5)
-    >>> v_fea = th.rand(4, 5)
-    >>> conv = GraphConv(5, 2, norm='both', weight=True, bias=True)
-    >>> res = conv(g, (u_fea, v_fea))
-    >>> res
-    tensor([[-0.2994,  0.6106],
-            [-0.4482,  0.5540],
-            [-0.5287,  0.8235],
-            [-0.2994,  0.6106]], grad_fn=<AddBackward0>)
-    """
+    '''
+    Modified GraphConv module that supports edge weights.
+    '''
     def __init__(self,
                  in_feats,
                  out_feats,

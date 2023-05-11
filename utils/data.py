@@ -9,20 +9,25 @@ import pandas as pd
 from dgl.nn import EdgeWeightNorm
 
 class HemiBrainGraphDataset():
+    '''
+    HemiBrain graph dataset
+    
+    Read in nodes, edges, and labels from csv files
+    Also has the option to add more node features and edge weights
+    '''
     def __init__(self, args):
         # args stuff
         self.random_split = args.random_split
         self.data_split = args.data_split
         self.device = args.device
 
-        # read in nodes=====================================================
+        # read in nodes======================================================
         nodes_df = pd.read_csv(args.dataset + '/traced-neurons.csv')
-        # remove nodes with empty label
+        # clean up nodes with empty label
         nodes_df = self._remove_nodes(nodes_df)
         self._build_bodyId_idx_dict(nodes_df)
         self.num_nodes = nodes_df.shape[0]
         self.num_classes = nodes_df['type'].nunique()
-        # make a graph with all nodes TODO
         
         # read in labels=====================================================
         labels = self._preprocess_labels(nodes_df)
@@ -30,31 +35,33 @@ class HemiBrainGraphDataset():
         
         # read in edges======================================================
         edge_df = pd.read_csv(args.dataset + '/traced-total-connections.csv')
-        # remove edges that are not in the traced neurons df
+        # clean up edges
         edge_df = self._remove_edges(edge_df)
         
-        # add self loops
+        # add self loops to graph=============================================
         self_loop_array = np.zeros((self.num_nodes, 3))
         for i, bodyId in enumerate(self.bodyId_idx_dict.keys()):
             self_loop_array[i, 0] = bodyId
             self_loop_array[i, 1] = bodyId
             self_loop_array[i, 2] = 1
         self_loop_df = pd.DataFrame(self_loop_array, columns = ['bodyId_pre', 'bodyId_post', 'weight'])
-
         edge_df = pd.concat([edge_df, self_loop_df])
-
-        # build graph and add features
+        
+        # build graph and add features========================================
         graph = self._build_graph(edge_df)
         graph = self._add_edge_weight(graph, edge_df)
         graph.ndata['label'] = torch.tensor(labels).type(torch.int64)
         graph = self._add_node_feats(graph, args)
         graph = self._partition_graph(graph, random=args.random_split)
-        
         self._g = dgl.reorder_graph(graph).to(self.device)
     
     def _remove_nodes(self, df):
         '''
         Remove nodes with empty label
+        args:
+            df: nodes df
+        return: 
+            df: nodes df with empty label removed
         '''
         df = df.dropna(subset=['type'])
         return df
@@ -62,6 +69,10 @@ class HemiBrainGraphDataset():
     def _remove_edges(self, df):
         '''
         Remove edges that are not in the traced neurons df
+        args:
+            df: edges df
+        return: 
+            df: edges df with edges not in traced neurons df removed
         '''
         existing_nodes = self.bodyId_idx_dict.keys()
         df = df[df['bodyId_pre'].isin(existing_nodes)]
@@ -69,6 +80,13 @@ class HemiBrainGraphDataset():
         return df
     
     def _build_bodyId_idx_dict(self, df):
+        '''
+        Build a dictionary that maps bodyId to index
+        args:
+            df: nodes df
+        return: 
+            None
+        '''
         bodyIds = df['bodyId'].unique()
         bodyIds = sorted(bodyIds)
         
@@ -79,19 +97,33 @@ class HemiBrainGraphDataset():
     def _add_node_feats(self, graph, args):
         '''
         Add node features to graph
+
+        if args.topological_feature is True, only add topology features
+        else, add more features
+        
+        if args.few_shot is True, sample a subset of nodes for 
+            addition labels embedding according to args.sample_method
+        else, no additional labels embedding is added
+        
+        if args.normalize is True, normalize the node features
+        else, no normalization is done
+        
+        args:
+            graph: dgl graph
+            args: args
+        return:
+            graph: dgl graph with node features
         '''
-        # node degree
+        # topological features by degree
         degree = torch.tensor(self._preprocess_degree_feats(graph))
         
         if args.topological_feature:
             graph.ndata['feat'] = degree
         else:
-            print('add more features')
             # XYZ coordinates features
             synapses = pd.read_csv(args.dataset + '/hemibrain_all_neurons_metrics_polypre_centrifugal_synapses.csv')
             # iterate through the df and add xyz coordinates to graph
             XYZ = torch.zeros(self.num_nodes, 3) 
-
             # other features (by index):
                 # 0: pre
                 # 1: post
@@ -103,9 +135,7 @@ class HemiBrainGraphDataset():
                 # 7: total_inputs_density
                 # 8: total_length
             other_features = torch.zeros(self.num_nodes, 9)
-
             exist = 0
-
             for index, row in synapses.iterrows():
                 bodyId = row['bodyid']
                 # seems like not all the bodyIds are in the graph
@@ -114,7 +144,6 @@ class HemiBrainGraphDataset():
                     xyz = row[['X', 'Y', 'Z']].values.astype(np.float32)
                     body_idx = self.bodyId_idx_dict[bodyId]
                     XYZ[body_idx, :] = torch.from_numpy(xyz)
-
                     ## other features
                     other_features[body_idx, :] = torch.from_numpy(row[['pre', 
                                                                         'post',
@@ -125,9 +154,10 @@ class HemiBrainGraphDataset():
                                                                         'total_outputs_density',
                                                                         'total_inputs_density',
                                                                         'total_length']].values.astype(np.float32)) # ints converted to floats for norm
-                    
+    
             graph.ndata['feat'] = torch.cat((degree, XYZ, other_features), dim=1)
 
+        # chose a sampling method if few_shot is True
         if args.few_shot:
             if args.sample_method == 'random':
                 label_mask = random_sample(graph, args.proportion)
@@ -139,6 +169,7 @@ class HemiBrainGraphDataset():
                 label_mask = sample_by_locality(graph, args.proportion)
             else:
                 raise NotImplementedError
+            # add label mask to graph, 1 for labeled nodes, 0 for unlabeled nodes
             graph.ndata['label_mask'] = label_mask
 
         # optional normalization
@@ -149,29 +180,31 @@ class HemiBrainGraphDataset():
     
     def _add_edge_weight(self, graph, edge_df):
         '''
-        Assign edge weight to graph
+        Assign normalized edge weight to graph
+        args:
+            graph: dgl graph
+            edge_df: edge df
+        return: 
+            graph: dgl graph with edge weight
         '''
         # get edge weight
         e_weights = torch.tensor(edge_df['weight'].values)
-        #print(e_weights.shape)
-        # for i in range(self.num_nodes):
-        #     e_weights.cat( i, i, 1 ) # self loop of weight 1
-        edge_weight = e_weights.type(torch.float32) #3413160
-        
+        edge_weight = e_weights.type(torch.float32)
         # normalize edge weight
         norm = EdgeWeightNorm(norm='both')
-        #print(edge_weight.shape)
         norm_edge_weight = norm(graph, edge_weight)
-
-        # norm_edge_weight
-        
-        # assignment
-        graph.edata['w'] = edge_weight
+        graph.edata['w'] = norm_edge_weight
         return graph
         
     def _partition_graph(self, graph, random=True):
         '''
-        Partition graph into train/val/test
+        Partition graph into train/val/test with mask
+        args:
+            graph: dgl graph
+            random: if True, random assignment of nodes to train/val/test
+                    if False, assignment of nodes to train/val/test by bodyId
+        return:
+            graph: dgl graph with train/val/test mask
         '''
         def split_data(num_nodes, idx, split_type='train'):
             train_ratio = int(num_nodes * self.data_split[0])
@@ -179,13 +212,10 @@ class HemiBrainGraphDataset():
             test_ratio = int(num_nodes * self.data_split[2])
             if split_type == 'train':
                 return idx[:train_ratio]
-                # return idx[:150]
             elif split_type == 'val':
                 return idx[train_ratio:train_ratio+val_ratio]
-                # return idx[150:200]
             elif split_type == 'test':
                 return idx[-test_ratio:]
-                # return idx[200:250]
         
         train_mask = torch.zeros(self.num_nodes, dtype=bool)
         val_mask = torch.zeros(self.num_nodes, dtype=bool)
@@ -207,45 +237,40 @@ class HemiBrainGraphDataset():
         test_mask[split_data(self.num_nodes, idx, 'test')] = True
             
         graph.ndata['train_mask'] = train_mask
-        #print(graph.ndata['train_mask'].shape)
         graph.ndata['val_mask'] = val_mask
-        #print(graph.ndata['val_mask'].shape)
         graph.ndata['test_mask'] = test_mask
-        #print(graph.ndata['test_mask'].shape)
         
         return graph
     
     def _build_graph(self, edge_df):
         '''
         Build graph from traced_total_connections
+        args:
+            edge_df: pandas dataframe of traced_total_connections
+        return: 
+            graph: dgl graph
         '''
-
         pre_indexes = np.vectorize(self.bodyId_idx_dict.get)(edge_df['bodyId_pre'].values)
         post_indexes = np.vectorize(self.bodyId_idx_dict.get)(edge_df['bodyId_post'].values)
         
-        # for bodyId in self.bodyId_idx_dict.keys():
-        #     np.append(pre_indexes, bodyId)
-        #     np.append(post_indexes, bodyId)
-        # print(self.num_nodes)
-        # for i in range(self.num_nodes):
-        #     np.append(pre_indexes, i)
-        #     np.append(post_indexes, i) 
-        #     # add self loops
-
-
-        # TODO Topological sort graph?
-        # Maybe use the 3D coordinates for topological sort?
         graph = dgl.graph((pre_indexes, post_indexes), num_nodes=self.num_nodes)
-        #print(graph.num_edges)
-        # graph = dgl.add_self_loop(graph) # redundant
-        #print(graph.num_edges)
         
         return graph
     
     def get_num_classes(self):
+        '''
+        Return number of classes
+        '''
         return self.num_classes
     
     def _preprocess_labels(self, traced_neurons):
+        '''
+        Preprocess labels, assign each label a unique index
+        args:
+            traced_neurons: pandas dataframe of traced_neurons
+        return: 
+            labels: list of labels
+        '''
         unique_labels = traced_neurons['type'].unique()
 
         self.label_idx_dict = {}
@@ -256,21 +281,38 @@ class HemiBrainGraphDataset():
         return labels
         
     def _preprocess_degree_feats(self, graph):
+        '''
+        Preprocess degree features
+        args:
+            graph: dgl graph
+        return: 
+            feats: degree features
+        '''
         feats = torch.stack([graph.in_degrees(), graph.out_degrees()]).T.type(torch.float32)
         return feats
 
     def __getitem__(self, idx):
+        '''
+        Get graph
+        '''
         assert idx == 0, "This dataset has only one graph"
         return self._g
     
     def __len__(self):
+        '''
+        Trivial
+        '''
         return 1
         
 # TODO stochastic dataloader/dataset class for hemibrain
 
 def investigate_label(graph):
     '''
-    collect stats about labels
+    collect stats about labels, plot class frequency
+    args:
+        graph: dgl graph
+    return:
+        None
     '''
     from matplotlib import pyplot as plt
     label = graph.ndata['label']
@@ -285,9 +327,7 @@ def investigate_label(graph):
     plt.xlabel('Label')
     plt.ylabel('Frequency')
     plt.savefig('label_frequency.png')
-
-#investigate_label(graph)
-
+    
 # different sampling method
 def sample_by_label(graph, proportion):
     '''
@@ -393,6 +433,13 @@ def random_sample(graph, proportion):
     return label_mask
 
 def get_hemibrain_split(args):
+    '''
+    Get hemibrain graph and number of classes
+    args:
+        args: arguments
+    return:
+        graph: dgl graph
+    '''
     dataset = HemiBrainGraphDataset(args)
     graph = dataset[0]
 

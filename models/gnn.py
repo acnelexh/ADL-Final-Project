@@ -1,24 +1,13 @@
-import numpy as np
-import pandas as pd
-import torch
-from collections import OrderedDict
-import torch.nn.init as init
-from balanced_loss import Loss
-
 import os
 os.environ['DGLBACKEND'] = 'pytorch'
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-import dgl
-import dgl.data
-from dgl.utils import expand_as_pair
-import dgl.function as fn
-from dgl.nn.pytorch.conv import GraphConv, SAGEConv, GATv2Conv
+from dgl.nn.pytorch.conv import GraphConv, GATv2Conv
 from .layer import GraphConvPlus
 
 __all__ = ['SimpleGNN']
+# GATv2GNN was redacted due to the lack of time to debug it
 
 class SimpleGNN(nn.Module):
     def __init__(self, args):
@@ -30,6 +19,8 @@ class SimpleGNN(nn.Module):
             out_features: number of output features (num_classes)
         '''
         super().__init__()
+
+        # get arguments====================================================================
         hidden_features = args.hidden_dim
         if args.few_shot == True:
             self.few_shot = True
@@ -37,11 +28,11 @@ class SimpleGNN(nn.Module):
         else:
             self.few_shot = False
             in_features = args.input_dim
-            
         self.class_balance_loss = args.class_balance_loss
         out_features = args.num_classes
         embedding_dim = args.label_embed_dim
-        # create layers
+        
+        # create layers====================================================================
         self.backbone = nn.ModuleList()
         hidden_features = [hidden_features] if type(hidden_features) == int else hidden_features
         hidden_features = [in_features] + hidden_features
@@ -49,17 +40,21 @@ class SimpleGNN(nn.Module):
         for idx in range(1, len(hidden_features)):
             if args.edge_weight == False:
                 print('Using GraphConv')
-                self.backbone.append(GraphConv(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
+                self.backbone.append(
+                    GraphConv(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
             else:
                 print('Using GraphConvPlus')
-                self.backbone.append(GraphConvPlus(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
+                self.backbone.append(
+                    GraphConvPlus(hidden_features[idx-1], hidden_features[idx], allow_zero_in_degree=True))
+                
+        # create classifier====================================================================
         self.edge_weight = args.edge_weight
         self.cls_head = GraphConv(hidden_features[-1], out_features, allow_zero_in_degree=True)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax(dim=1)
         self.criterion = nn.CrossEntropyLoss(reduce=False)
-        # label embedding
-        # assume the 0 label is the empty label
+
+        # create label embedding LUT for few shot learning====================================
         if self.few_shot:
             self.LUT = torch.nn.Embedding(out_features + 1, embedding_dim)
         self.label_weight = args.label_weight
@@ -68,10 +63,16 @@ class SimpleGNN(nn.Module):
     def label_lookup(self, graph, feats):
         '''
         Look up label embedding
+        args:
+            graph: dgl graph
+            feats: node features
+        return:
+            label_embedding: label embedding for each node
         '''
         node_label = graph.ndata['label']
         label_mask = graph.ndata['label_mask']
         look_up = torch.zeros(feats.shape[0]).to(feats.device)
+        # look up label embedding, assume 0 idx is for unlabelled node
         for idx, mask in enumerate(label_mask):
             if mask == 1:
                 look_up[idx] = node_label[idx] + 1
@@ -79,16 +80,28 @@ class SimpleGNN(nn.Module):
         return label_embedding
 
     def forward(self, graph, x, edge_weight=None, output_labels=None):
-        # check for label embedding
+        '''
+        Forward pass
+        args:
+            graph: dgl graph
+            x: node features
+            edge_weight: edge weight (optional, for GraphConvPlus)
+            output_labels: ground truth labels (optional, for training)
+        return:
+            x: logits/loss (depends on training or not)
+        '''
+        # if few shot, concatenate label embedding to node features
         if self.few_shot == True:
             label_embedding = self.label_lookup(graph, x)
             x = torch.cat([x, label_embedding], dim=1)
+        # backbone forward pass
         for idx, layer in enumerate(self.backbone):
             if self.edge_weight == True:
                 x = layer(graph, x, edge_weight)
             else:
                 x = layer(graph, x)
             x = self.relu(x)
+        # classifier forward pass
         x = self.cls_head(graph, x)
         x = self.softmax(x)
         # loss calculation
@@ -136,3 +149,4 @@ class SimpleGNN(nn.Module):
         weights = torch.tensor(weights, device=logits.device).float()
         loss = F.cross_entropy(logits, labels, weight=weights, reduce=False)
         return loss
+

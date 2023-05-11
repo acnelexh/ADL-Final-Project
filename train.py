@@ -68,6 +68,7 @@ def get_args():
             
 
 def main(args):
+    # for reproducibility
     torch.random.manual_seed(args.seed)
     
     if not os.path.exists(args.tensorboard_log_dir):
@@ -93,7 +94,8 @@ def main(args):
     graph, num_classes = get_hemibrain_split(args)
     args.num_classes = num_classes
     args.input_dim = graph.ndata['feat'].shape[1]
-    # hardcode for now
+    
+    # fetch model and optimizer
     model = fetch_model(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.lr_decay)
     if args.lr_scheduler == 'multisteplr':
@@ -106,11 +108,8 @@ def main(args):
         raise RuntimeError("Invalid lr scheduler '{}'. Only MultiStepLR and CosineAnnealingLR "
                             "are supported.".format(args.lr_scheduler))
     
+    # train the model
     train(model, graph, optimizer, lr_scheduler, write_dir, args, writer)
-    
-    # load best model and test
-    #model = torch.load(os.path.join(write_dir, 'model_best.pth.tar'))
-    
     
 
 if __name__ == "__main__":
