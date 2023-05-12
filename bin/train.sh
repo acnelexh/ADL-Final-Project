@@ -3,7 +3,7 @@
 python train.py \
    --dataset ./data/exported-traced-adjacencies \
    --normalize True \
-   --model GATGNN \
+   --model SimpleGNN \
    --output_dir ./runs \
    --tensorboard_log_dir ./tensorboard_log \
    --lr 0.001 \
